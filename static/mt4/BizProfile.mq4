@@ -670,7 +670,7 @@ datetime CalculateCurrentPeriodEndTime()
 }
 
 void DrawHg(const string prefix, const double lowPrice, const double &volumes[], const int barFrom, const int barTo, double zoom,
-            const int &modes[], const int max = -1, const int median = -1, const int vwap = -1)
+            const int &modes[], const int max = -1, const int median = -1, const int vwap = -1, const datetime extendMaxTo = 0)
 {
    int size = ArraySize(volumes);
    if(size == 0)
@@ -742,13 +742,18 @@ void DrawHg(const string prefix, const double lowPrice, const double &volumes[],
       {
          color modeColor = (_showMax && (i == max)) ? _maxColor : _modeColor;
 
-         if(_showMax && (i == max) && EstendiMax)
+         if(_showMax && (i == max) && EstendiMax && extendMaxTo > 0)
          {
-            datetime currentDayEndTime = CalculateCurrentPeriodEndTime();
             if(DrawDirection == HG_DIRECTION_RIGHT)
-               mt2 = currentDayEndTime;
+            {
+               if(extendMaxTo > mt2)
+                  mt2 = extendMaxTo;
+            }
             else
-               timeFrom = currentDayEndTime;
+            {
+               if(extendMaxTo > timeFrom)
+                  timeFrom = extendMaxTo;
+            }
          }
 
          if(_hgBarStyle == VP_BAR_STYLE_LINE)
@@ -976,7 +981,11 @@ bool Update()
          SwapInt(barFrom, barTo);
 
       DeleteObjectsByPrefix(prefix);
-      DrawHg(prefix, lowPrice, volumes, barFrom, barTo, zoom, modes, maxPos, medianPos, vwapPos);
+      datetime extendMaxTo = 0;
+      // Evita che i profili storici vengano "schiacciati" da estensioni dei massimi fino a oggi.
+      if(EstendiMax && i == 0)
+         extendMaxTo = CalculateCurrentPeriodEndTime();
+      DrawHg(prefix, lowPrice, volumes, barFrom, barTo, zoom, modes, maxPos, medianPos, vwapPos, extendMaxTo);
    }
    return totalResult;
 }
