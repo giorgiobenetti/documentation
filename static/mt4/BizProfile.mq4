@@ -152,6 +152,7 @@ int _timeShiftSeconds = 0;
 ENUM_TIMEFRAMES _dataPeriod = PERIOD_M1;
 bool _ticksFallbackNotified = false;
 bool _historyWarningPrinted = false;
+bool _fallbackInfoPrinted = false;
 
 //+------------------------------------------------------------------+
 //|   Millisecond timer                                              |
@@ -516,6 +517,77 @@ bool ColorIsNone(const color c)
    return COLOR_IS_NONE(c);
 }
 
+void AddTimeframeUnique(ENUM_TIMEFRAMES &arr[], const ENUM_TIMEFRAMES tf)
+{
+   int size = ArraySize(arr);
+   for(int i = 0; i < size; i++)
+      if(arr[i] == tf)
+         return;
+   ArrayResize(arr, size + 1);
+   arr[size] = tf;
+}
+
+void BuildFallbackPeriods(const ENUM_TIMEFRAMES preferredPeriod, ENUM_TIMEFRAMES &periods[])
+{
+   ArrayResize(periods, 0);
+   AddTimeframeUnique(periods, preferredPeriod);
+
+   // Fallback progressivo verso timeframe piu' alti per coprire range con storico scarso.
+   if(preferredPeriod <= PERIOD_M1)
+   {
+      AddTimeframeUnique(periods, PERIOD_M5);
+      AddTimeframeUnique(periods, PERIOD_M15);
+      AddTimeframeUnique(periods, PERIOD_M30);
+      AddTimeframeUnique(periods, PERIOD_H1);
+   }
+   else if(preferredPeriod <= PERIOD_M5)
+   {
+      AddTimeframeUnique(periods, PERIOD_M15);
+      AddTimeframeUnique(periods, PERIOD_M30);
+      AddTimeframeUnique(periods, PERIOD_H1);
+   }
+   else if(preferredPeriod <= PERIOD_M15)
+   {
+      AddTimeframeUnique(periods, PERIOD_M30);
+      AddTimeframeUnique(periods, PERIOD_H1);
+   }
+   else if(preferredPeriod <= PERIOD_M30)
+   {
+      AddTimeframeUnique(periods, PERIOD_H1);
+   }
+}
+
+bool IsRangeCoveredByPeriod(const datetime timeFrom, const datetime timeTo, const ENUM_TIMEFRAMES period)
+{
+   int ps = PeriodSecondsSafe(period);
+   if(ps <= 0)
+      ps = 60;
+
+   datetime nowTime = TimeCurrent();
+   datetime requiredTo = (timeTo < nowTime ? timeTo : nowTime);
+   if(requiredTo < timeFrom)
+      requiredTo = timeFrom;
+
+   int bFrom = iBarShift(Symbol(), period, timeFrom, false);
+   int bTo = iBarShift(Symbol(), period, requiredTo, false);
+   if(bFrom < 0 || bTo < 0)
+      return false;
+
+   datetime t1 = iTime(Symbol(), period, bFrom);
+   datetime t2 = iTime(Symbol(), period, bTo);
+   if(t1 <= 0 || t2 <= 0)
+      return false;
+
+   datetime oldest = (t1 < t2 ? t1 : t2);
+   datetime newest = (t1 > t2 ? t1 : t2);
+   int tolerance = 2 * ps;
+   if(oldest > (timeFrom + tolerance))
+      return false;
+   if((newest + ps) < (requiredTo - tolerance))
+      return false;
+   return true;
+}
+
 //+------------------------------------------------------------------+
 //|   Data source selection                                          |
 //+------------------------------------------------------------------+
@@ -803,33 +875,12 @@ bool UpdateAutoColors()
 int GetHg(const datetime timeFrom, const datetime timeTo, const double point, const ENUM_TIMEFRAMES dataPeriod,
           const ENUM_VOLUME_TYPE appliedVolume, double &low, double &volumes[])
 {
-   int ps = PeriodSecondsSafe(dataPeriod);
-   if(ps <= 0)
-      ps = 60;
-   int barsTotal = iBars(Symbol(), dataPeriod);
-   if(barsTotal <= 0)
-      return 0;
-   datetime oldestLoaded = iTime(Symbol(), dataPeriod, barsTotal - 1);
-   datetime newestLoaded = iTime(Symbol(), dataPeriod, 0);
-   datetime nowTime = TimeCurrent();
-   datetime requiredTo = (timeTo < nowTime ? timeTo : nowTime);
-   if(requiredTo < timeFrom)
-      requiredTo = timeFrom;
-   // Evita profili "collassati": se la storia non copre tutto il range richiesto, non disegnare.
-   if(oldestLoaded <= 0 || newestLoaded <= 0 || oldestLoaded > timeFrom || (newestLoaded + ps) < requiredTo)
-      return 0;
-
    int first = iBarShift(Symbol(), dataPeriod, timeTo, false);
    int last = iBarShift(Symbol(), dataPeriod, timeFrom, false);
    if(first < 0 || last < 0)
       return 0;
    if(last < first)
       SwapInt(last, first);
-   int gotBars = last - first + 1;
-   int expectedBars = (int)((requiredTo - timeFrom) / ps) + 1;
-   // Se ci aspettiamo molti bar ma ne abbiamo pochissimi, lo storico non e' ancora completo.
-   if(expectedBars > 20 && gotBars < (expectedBars / 4))
-      return 0;
 
    bool inited = false;
    double high = 0;
@@ -909,6 +960,28 @@ int GetHg(const datetime timeFrom, const datetime timeTo, const double point, co
    return hgSize;
 }
 
+int GetHgWithFallback(const datetime timeFrom, const datetime timeTo, const double point, const ENUM_TIMEFRAMES preferredPeriod,
+                      const ENUM_VOLUME_TYPE appliedVolume, double &low, double &volumes[], ENUM_TIMEFRAMES &usedPeriod)
+{
+   ENUM_TIMEFRAMES periods[];
+   BuildFallbackPeriods(preferredPeriod, periods);
+   int size = ArraySize(periods);
+   for(int i = 0; i < size; i++)
+   {
+      ENUM_TIMEFRAMES tf = periods[i];
+      if(!IsRangeCoveredByPeriod(timeFrom, timeTo, tf))
+         continue;
+      int count = GetHg(timeFrom, timeTo, point, tf, appliedVolume, low, volumes);
+      if(count > 0)
+      {
+         usedPeriod = tf;
+         return count;
+      }
+   }
+   usedPeriod = preferredPeriod;
+   return 0;
+}
+
 //+------------------------------------------------------------------+
 //|   Core update                                                    |
 //+------------------------------------------------------------------+
@@ -976,10 +1049,10 @@ bool Update()
       string prefix = _prefix + IntegerToString((int)(rangeStart / PeriodSecondsSafe(RangePeriod))) + " ";
 
       // MT4: VP_SOURCE_TICKS fallback automatico a M1 (gestito in _dataPeriod)
-      int count = GetHg(rangeStart, rangeEnd, _hgPoint, _dataPeriod, VolumeType, lowPrice, volumes);
+      ENUM_TIMEFRAMES usedPeriod = _dataPeriod;
+      int count = GetHgWithFallback(rangeStart, rangeEnd, _hgPoint, _dataPeriod, VolumeType, lowPrice, volumes, usedPeriod);
       if(count <= 0)
       {
-         DeleteObjectsByPrefix(prefix);
          if(!_historyWarningPrinted)
          {
             Print("Storico incompleto per ", Symbol(), " TF=", (int)_dataPeriod, ". "
@@ -988,6 +1061,11 @@ bool Update()
          }
          totalResult = false;
          continue;
+      }
+      if(usedPeriod != _dataPeriod && !_fallbackInfoPrinted)
+      {
+         Print("Storico non completo su TF=", (int)_dataPeriod, " -> fallback automatico TF=", (int)usedPeriod, " per alcuni blocchi.");
+         _fallbackInfoPrinted = true;
       }
 
       if(rangeEnd < lastTickTime)
