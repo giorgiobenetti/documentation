@@ -958,7 +958,9 @@ bool Update()
       if(rangeEnd < lastTickTime)
          ArrayAddDatetime(_drawHistory, rangeStart, true);
 
-      int modeCount = _showModes ? HgModes(volumes, _modeStep, modes) : -1;
+      ArrayFree(modes);
+      if(_showModes)
+         HgModes(volumes, _modeStep, modes);
       int maxPos = _showMax ? ArrayMaximumDouble(volumes) : -1;
       int medianPos = _showMedian ? ArrayMedian(volumes) : -1;
       int vwapPos = _showVwap ? HgVwap(volumes, lowPrice, _hgPoint) : -1;
@@ -975,7 +977,6 @@ bool Update()
 
       DeleteObjectsByPrefix(prefix);
       DrawHg(prefix, lowPrice, volumes, barFrom, barTo, zoom, modes, maxPos, medianPos, vwapPos);
-      (void)modeCount;
    }
    return totalResult;
 }
@@ -1052,7 +1053,6 @@ int OnInit()
 
 void OnDeinit(const int reason)
 {
-   (void)reason;
    DeleteObjectsByPrefix(_prefix);
    ObjectDelete("ExpiredIndicatorText");
    ObjectDelete("ExpiredIndicatorText2");
@@ -1067,9 +1067,6 @@ void OnDeinit(const int reason)
 
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
-   (void)lparam;
-   (void)dparam;
-   (void)sparam;
    if(id == CHARTEVENT_CHART_CHANGE)
    {
       if(UpdateAutoColors())
@@ -1085,17 +1082,6 @@ int OnCalculate(const int rates_total, const int prev_calculated, const datetime
                 const double &close[], const long &tick_volume[], const long &volume[],
                 const int &spread[])
 {
-   (void)rates_total;
-   (void)prev_calculated;
-   (void)time;
-   (void)open;
-   (void)high;
-   (void)low;
-   (void)close;
-   (void)tick_volume;
-   (void)volume;
-   (void)spread;
-
    if(UpdateAutoColors())
       ArrayFree(_drawHistory);
    CheckTimer();
