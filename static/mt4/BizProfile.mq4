@@ -151,6 +151,7 @@ double _zoom = 0;
 int _timeShiftSeconds = 0;
 ENUM_TIMEFRAMES _dataPeriod = PERIOD_M1;
 bool _ticksFallbackNotified = false;
+bool _historyWarningPrinted = false;
 
 //+------------------------------------------------------------------+
 //|   Millisecond timer                                              |
@@ -802,12 +803,33 @@ bool UpdateAutoColors()
 int GetHg(const datetime timeFrom, const datetime timeTo, const double point, const ENUM_TIMEFRAMES dataPeriod,
           const ENUM_VOLUME_TYPE appliedVolume, double &low, double &volumes[])
 {
+   int ps = PeriodSecondsSafe(dataPeriod);
+   if(ps <= 0)
+      ps = 60;
+   int barsTotal = iBars(Symbol(), dataPeriod);
+   if(barsTotal <= 0)
+      return 0;
+   datetime oldestLoaded = iTime(Symbol(), dataPeriod, barsTotal - 1);
+   datetime newestLoaded = iTime(Symbol(), dataPeriod, 0);
+   datetime nowTime = TimeCurrent();
+   datetime requiredTo = (timeTo < nowTime ? timeTo : nowTime);
+   if(requiredTo < timeFrom)
+      requiredTo = timeFrom;
+   // Evita profili "collassati": se la storia non copre tutto il range richiesto, non disegnare.
+   if(oldestLoaded <= 0 || newestLoaded <= 0 || oldestLoaded > timeFrom || (newestLoaded + ps) < requiredTo)
+      return 0;
+
    int first = iBarShift(Symbol(), dataPeriod, timeTo, false);
    int last = iBarShift(Symbol(), dataPeriod, timeFrom, false);
    if(first < 0 || last < 0)
       return 0;
    if(last < first)
       SwapInt(last, first);
+   int gotBars = last - first + 1;
+   int expectedBars = (int)((requiredTo - timeFrom) / ps) + 1;
+   // Se ci aspettiamo molti bar ma ne abbiamo pochissimi, lo storico non e' ancora completo.
+   if(expectedBars > 20 && gotBars < (expectedBars / 4))
+      return 0;
 
    bool inited = false;
    double high = 0;
@@ -951,11 +973,19 @@ bool Update()
          totalResult = false;
          continue;
       }
+      string prefix = _prefix + IntegerToString((int)(rangeStart / PeriodSecondsSafe(RangePeriod))) + " ";
 
       // MT4: VP_SOURCE_TICKS fallback automatico a M1 (gestito in _dataPeriod)
       int count = GetHg(rangeStart, rangeEnd, _hgPoint, _dataPeriod, VolumeType, lowPrice, volumes);
       if(count <= 0)
       {
+         DeleteObjectsByPrefix(prefix);
+         if(!_historyWarningPrinted)
+         {
+            Print("Storico incompleto per ", Symbol(), " TF=", (int)_dataPeriod, ". "
+                  "Carica piu' storico (soprattutto M1) per vedere tutti i blocchi correttamente.");
+            _historyWarningPrinted = true;
+         }
          totalResult = false;
          continue;
       }
@@ -970,7 +1000,6 @@ bool Update()
       int medianPos = _showMedian ? ArrayMedian(volumes) : -1;
       int vwapPos = _showVwap ? HgVwap(volumes, lowPrice, _hgPoint) : -1;
 
-      string prefix = _prefix + IntegerToString((int)(rangeStart / PeriodSecondsSafe(RangePeriod))) + " ";
       int maxIdx = ArrayMaximumDouble(volumes);
       double maxVolume = (maxIdx >= 0 ? volumes[maxIdx] : 1.0);
       if(maxVolume == 0)
