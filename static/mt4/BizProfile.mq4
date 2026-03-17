@@ -114,6 +114,7 @@ bool ShowHorizon = true;
 double Zoom = 0;
 int WaitMilliseconds = 1000;
 int RangeLength = 0; // minuti, 0 = RangePeriod
+input bool UpdateOnlyOnNewSourceBar = true; // riduce carico: aggiorna solo a nuova barra del source TF
 
 //+------------------------------------------------------------------+
 //|   Variabili globali                                              |
@@ -153,6 +154,9 @@ ENUM_TIMEFRAMES _dataPeriod = PERIOD_M1;
 bool _ticksFallbackNotified = false;
 bool _historyWarningPrinted = false;
 bool _fallbackInfoPrinted = false;
+datetime _lastSourceBarTime = 0;
+bool _forceUpdate = true;
+bool _didVisualUpdate = false;
 
 //+------------------------------------------------------------------+
 //|   Millisecond timer                                              |
@@ -793,29 +797,47 @@ void DrawHg(const string prefix, const double lowPrice, const double &volumes[],
       datetime t2 = GetBarTime(bar2);
       datetime mt2 = GetBarTime(modeBar2);
 
-      if(_showModeLevel && (ArrayIndexOfInt(modes, i) != -1))
+      bool isMode = (ArrayIndexOfInt(modes, i) != -1);
+      bool isMax = (_showMax && (i == max));
+      bool isMedian = (_showMedian && (i == median));
+      bool isVwap = (_showVwap && (i == vwap));
+
+      if(_showModeLevel && isMode)
          DrawLevel(name + " level", price);
 
       if(_showHg && !(isOutline && (i == size - 1)))
       {
-         if(_hgColor1 != _hgColor2)
-            cl = MixColors(_hgColor1, _hgColor2, (isOutline ? MathMax(volume, nextVolume) : volume) / maxValue, 8);
-         DrawBar(name, t1, t2, price, cl, _hgLineWidth, _hgBarStyle, STYLE_SOLID, true);
+         bool drawHgBar = true;
+         if(isOutline)
+         {
+            if(i < size - 1 && volume <= 0.0 && nextVolume <= 0.0)
+               drawHgBar = false;
+         }
+         else if(volume <= 0.0)
+         {
+            drawHgBar = false;
+         }
+         if(drawHgBar)
+         {
+            if(_hgColor1 != _hgColor2)
+               cl = MixColors(_hgColor1, _hgColor2, (isOutline ? MathMax(volume, nextVolume) : volume) / maxValue, 8);
+            DrawBar(name, t1, t2, price, cl, _hgLineWidth, _hgBarStyle, STYLE_SOLID, true);
+         }
       }
 
-      if(_showMedian && (i == median))
+      if(isMedian)
       {
          DrawBar(name + " median", timeFrom, timeTo, price, _medianColor, _modeLineWidth, VP_BAR_STYLE_LINE, _statLineStyle, false);
       }
-      else if(_showVwap && (i == vwap))
+      else if(isVwap)
       {
          DrawBar(name + " vwap", timeFrom, timeTo, price, _vwapColor, _modeLineWidth, VP_BAR_STYLE_LINE, _statLineStyle, false);
       }
-      else if((_showMax && (i == max)) || (_showModes && (ArrayIndexOfInt(modes, i) != -1)))
+      else if(isMax || (_showModes && isMode))
       {
-         color modeColor = (_showMax && (i == max)) ? _maxColor : _modeColor;
+         color modeColor = isMax ? _maxColor : _modeColor;
 
-         if(_showMax && (i == max) && EstendiMax && extendMaxTo > 0)
+         if(isMax && EstendiMax && extendMaxTo > 0)
          {
             if(DrawDirection == HG_DIRECTION_RIGHT)
             {
@@ -987,6 +1009,14 @@ int GetHgWithFallback(const datetime timeFrom, const datetime timeTo, const doub
 //+------------------------------------------------------------------+
 bool Update()
 {
+   _didVisualUpdate = false;
+   if(UpdateOnlyOnNewSourceBar && !_forceUpdate)
+   {
+      datetime currentSourceBarTime = iTime(Symbol(), _dataPeriod, 0);
+      if(currentSourceBarTime > 0 && currentSourceBarTime == _lastSourceBarTime)
+         return true;
+   }
+
    datetime ranges[];
    ArraySetAsSeries(ranges, true);
    ArrayResize(ranges, _rangeCount);
@@ -1018,6 +1048,7 @@ bool Update()
    double volumes[];
    double lowPrice = 0;
    bool totalResult = true;
+   bool anyDraw = false;
 
    for(int i = 0; i < _rangeCount; i++)
    {
@@ -1093,27 +1124,33 @@ bool Update()
       if(EstendiMax && i == 0)
          extendMaxTo = CalculateCurrentPeriodEndTime();
       DrawHg(prefix, lowPrice, volumes, barFrom, barTo, zoom, modes, maxPos, medianPos, vwapPos, extendMaxTo);
+      anyDraw = true;
    }
-   return totalResult;
+
+   _didVisualUpdate = anyDraw;
+   if(totalResult)
+   {
+      _lastSourceBarTime = iTime(Symbol(), _dataPeriod, 0);
+      _forceUpdate = false;
+      return true;
+   }
+
+   // In caso di dati incompleti ritenta al prossimo giro timer.
+   _forceUpdate = true;
+   return false;
 }
 
 void CheckTimer()
 {
-   EventKillTimer();
    if(_updateTimer == NULL)
       return;
 
    if(_updateTimer.Check() || !_lastOK)
    {
       _lastOK = Update();
-      if(!_lastOK)
-         EventSetTimer(3);
-      ChartRedraw();
+      if(_didVisualUpdate)
+         ChartRedraw();
       _updateTimer.Reset();
-   }
-   else
-   {
-      EventSetTimer(3);
    }
 }
 
@@ -1164,6 +1201,7 @@ int OnInit()
    if(_timeShiftSeconds < 0)
       _timeShiftSeconds += ps;
    _dataPeriod = GetDataPeriod(DataSource);
+   EventSetTimer(1);
    return INIT_SUCCEEDED;
 }
 
@@ -1188,6 +1226,7 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       if(UpdateAutoColors())
       {
          ArrayFree(_drawHistory);
+         _forceUpdate = true;
          CheckTimer();
       }
    }
