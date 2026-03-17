@@ -115,6 +115,8 @@ double Zoom = 0;
 int WaitMilliseconds = 1000;
 int RangeLength = 0; // minuti, 0 = RangePeriod
 input bool UpdateOnlyOnNewSourceBar = true; // riduce carico: aggiorna solo a nuova barra del source TF
+input bool AllowPartialHistory = true;      // mostra profilo anche con storico non completo
+input int MinBarsPerProfile = 8;            // minimo barre source per disegnare un blocco
 
 //+------------------------------------------------------------------+
 //|   Variabili globali                                              |
@@ -559,6 +561,8 @@ void BuildFallbackPeriods(const ENUM_TIMEFRAMES preferredPeriod, ENUM_TIMEFRAMES
    {
       AddTimeframeUnique(periods, PERIOD_H1);
    }
+   AddTimeframeUnique(periods, PERIOD_H4);
+   AddTimeframeUnique(periods, PERIOD_D1);
 }
 
 bool IsRangeCoveredByPeriod(const datetime timeFrom, const datetime timeTo, const ENUM_TIMEFRAMES period)
@@ -585,10 +589,20 @@ bool IsRangeCoveredByPeriod(const datetime timeFrom, const datetime timeTo, cons
    datetime oldest = (t1 < t2 ? t1 : t2);
    datetime newest = (t1 > t2 ? t1 : t2);
    int tolerance = 2 * ps;
-   if(oldest > (timeFrom + tolerance))
-      return false;
-   if((newest + ps) < (requiredTo - tolerance))
-      return false;
+   if(!AllowPartialHistory)
+   {
+      if(oldest > (timeFrom + tolerance))
+         return false;
+      if((newest + ps) < (requiredTo - tolerance))
+         return false;
+   }
+   else
+   {
+      int gotBars = MathAbs(bFrom - bTo) + 1;
+      int minBars = (MinBarsPerProfile < 1 ? 1 : MinBarsPerProfile);
+      if(gotBars < minBars)
+         return false;
+   }
    return true;
 }
 
@@ -988,6 +1002,11 @@ int GetHgWithFallback(const datetime timeFrom, const datetime timeTo, const doub
    ENUM_TIMEFRAMES periods[];
    BuildFallbackPeriods(preferredPeriod, periods);
    int size = ArraySize(periods);
+   int bestCount = 0;
+   ENUM_TIMEFRAMES bestTf = preferredPeriod;
+   double bestLow = 0;
+   double tmpLow = 0;
+   double tmpVolumes[];
    for(int i = 0; i < size; i++)
    {
       ENUM_TIMEFRAMES tf = periods[i];
@@ -1000,6 +1019,32 @@ int GetHgWithFallback(const datetime timeFrom, const datetime timeTo, const doub
          return count;
       }
    }
+
+   // Se lo storico non copre perfettamente, prova comunque il periodo con piu' dati disponibili.
+   if(AllowPartialHistory)
+   {
+      for(int j = 0; j < size; j++)
+      {
+         ENUM_TIMEFRAMES tf2 = periods[j];
+         ArrayFree(tmpVolumes);
+         int count2 = GetHg(timeFrom, timeTo, point, tf2, appliedVolume, tmpLow, tmpVolumes);
+         if(count2 > bestCount)
+         {
+            bestCount = count2;
+            bestTf = tf2;
+            bestLow = tmpLow;
+            ArrayFree(volumes);
+            ArrayCopy(volumes, tmpVolumes);
+         }
+      }
+      if(bestCount > 0)
+      {
+         low = bestLow;
+         usedPeriod = bestTf;
+         return bestCount;
+      }
+   }
+
    usedPeriod = preferredPeriod;
    return 0;
 }
