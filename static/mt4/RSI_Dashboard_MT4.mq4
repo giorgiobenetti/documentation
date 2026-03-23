@@ -23,6 +23,8 @@ string supportEmail = "info@investire.biz";
 //-------------------- INTERNAL -------------------------------------
 string PREFIX = "RSIDASH_";
 bool g_blocked = false;
+color COLOR_BRAND_GREEN = C'87,190,124';   // #57be7c
+color COLOR_SIGNAL_GREEN = C'130,230,170'; // verde chiaro per strumenti
 
 // snapshot stile grafico originale
 bool g_chartStyleSaved = false;
@@ -77,10 +79,10 @@ string GetRsiState(double value)
    return("Neutro");
 }
 
-color GetRsiStateColor(double value, bool primary)
+color GetRsiStateColor(double value)
 {
-   if(value >= overbought) return(primary ? clrRed : clrTomato);
-   if(value <= oversold)   return(primary ? clrDarkGreen : clrSeaGreen);
+   if(value >= overbought) return(clrRed);
+   if(value <= oversold)   return(COLOR_SIGNAL_GREEN);
    return(clrBlack);
 }
 
@@ -212,8 +214,8 @@ void DrawButton(string name, int x, int y, string text, string tooltip, int widt
    ObjectSetString (0, name, OBJPROP_TEXT, text);
    ObjectSetString (0, name, OBJPROP_TOOLTIP, tooltip);
 
-   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, clrBlue);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clrWhite);
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, clrWhite);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, COLOR_BRAND_GREEN);
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, name, OBJPROP_ZORDER, 30);
@@ -317,12 +319,10 @@ void UpdateDashboard()
       string statoMain = GetRsiState(rsiMain);
       string statoSecondary = GetRsiState(rsiSecondary);
 
-      // Priorita' colore al timeframe principale (H4 di default).
+      // Colore riga basato solo sul timeframe principale (H4 di default).
       color rowColor = clrBlack;
       if(statoMain != "Neutro")
-         rowColor = GetRsiStateColor(rsiMain, true);
-      else if(statoSecondary != "Neutro")
-         rowColor = GetRsiStateColor(rsiSecondary, false);
+         rowColor = GetRsiStateColor(rsiMain);
 
       int x = (count < 20) ? x1 : x2;
       int y = (count < 20) ? y1 : y2;
@@ -364,7 +364,7 @@ int OnInit()
       return(INIT_SUCCEEDED);
    }
 
-   DrawLabel("title", 10, 10, title, 18, clrLime);
+   DrawLabel("title", 10, 10, title, 18, COLOR_BRAND_GREEN);
    DrawLabel("powered_by", 10, 35, poweredByText, 9, clrGray);
    DrawButton("btn_update", 700, 35, "Aggiorna", "update", 80, 30);
 
