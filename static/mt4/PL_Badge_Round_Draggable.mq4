@@ -118,8 +118,8 @@ void EnsureCircleLabel(const string name, bool selectable, int zorder)
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, false);
    ObjectSetInteger(0, name, OBJPROP_BACK, false);
    ObjectSetInteger(0, name, OBJPROP_ZORDER, zorder);
-   ObjectSetString(0, name, OBJPROP_FONT, "Arial");
-   ObjectSetString(0, name, OBJPROP_TEXT, "●");
+   ObjectSetString(0, name, OBJPROP_FONT, "Wingdings");
+   ObjectSetString(0, name, OBJPROP_TEXT, CharToString(108));
 }
 
 void EnsureValueLabel()
