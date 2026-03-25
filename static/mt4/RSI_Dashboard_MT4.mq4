@@ -82,6 +82,13 @@ string GetRsiState(double value)
    return("Neutro");
 }
 
+string GetRsiStateCode(double value)
+{
+   if(value >= overbought) return("OC");
+   if(value <= oversold)   return("OV");
+   return("N");
+}
+
 color GetRsiStateColor(double value)
 {
    if(value >= overbought) return(clrRed);
@@ -416,6 +423,9 @@ void UpdateDashboard()
 
    DrawBackgroundPanel();
 
+   int chartW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+   DrawButton("btn_update", chartW - 110, 35, "Aggiorna", "update", 80, 30);
+
    int total = ObjectsTotal(0, 0, -1);
    for(int i = total - 1; i >= 0; i--)
    {
@@ -426,14 +436,30 @@ void UpdateDashboard()
       if(name == PREFIX+"bg" || name == PREFIX+"title" || name == PREFIX+"powered_by" || name == PREFIX+"btn_update")
          continue;
 
-      if(StringFind(name, PREFIX+"line_", 0) == 0 || StringFind(name, PREFIX+"btn_", 0) == 0)
-         ObjectDelete(0, name);
+      ObjectDelete(0, name);
    }
 
-   int x1 = 10,  y1 = 70;
-   int x2 = 560, y2 = 70;
+   int x1 = 10;
+   int x2 = (chartW / 2) + 10;
+   int y1 = 74, y2 = 74;
    string tfMain = TfToString(rsiTimeframeMain);
    string tfSecondary = TfToString(rsiTimeframeSecondary);
+
+   // Header colonna sinistra
+   DrawLabel("hdr_l_sym",    x1,      56, "SYM",      8, clrDimGray);
+   DrawLabel("hdr_l_h4",     x1 + 70, 56, tfMain,     8, clrDimGray);
+   DrawLabel("hdr_l_m15",    x1 + 165,56, tfSecondary,8, clrDimGray);
+   DrawLabel("hdr_l_div_h4", x1 + 260,56, "DIV H4",   8, clrDimGray);
+   DrawLabel("hdr_l_div_m",  x1 + 335,56, "DIV M15",  8, clrDimGray);
+
+   // Header colonna destra
+   DrawLabel("hdr_r_sym",    x2,      56, "SYM",      8, clrDimGray);
+   DrawLabel("hdr_r_h4",     x2 + 70, 56, tfMain,     8, clrDimGray);
+   DrawLabel("hdr_r_m15",    x2 + 165,56, tfSecondary,8, clrDimGray);
+   DrawLabel("hdr_r_div_h4", x2 + 260,56, "DIV H4",   8, clrDimGray);
+   DrawLabel("hdr_r_div_m",  x2 + 335,56, "DIV M15",  8, clrDimGray);
+
+   DrawLabel("legend", 200, 35, "Stati RSI: N=Neutro  OC=Ipercomprato  OV=Ipervenduto", 8, clrGray);
 
    int symTotal = SymbolsTotal(true);
    int count = 0;
@@ -450,6 +476,8 @@ void UpdateDashboard()
 
       string statoMain = GetRsiState(rsiMain);
       string statoSecondary = GetRsiState(rsiSecondary);
+      string stateMainCode = GetRsiStateCode(rsiMain);
+      string stateSecondaryCode = GetRsiStateCode(rsiSecondary);
       string divMain = DivergenceToText(GetRsiDivergence(symbol, rsiTimeframeMain));
       string divSecondary = DivergenceToText(GetRsiDivergence(symbol, rsiTimeframeSecondary));
 
@@ -461,14 +489,12 @@ void UpdateDashboard()
       int x = (count < 20) ? x1 : x2;
       int y = (count < 20) ? y1 : y2;
 
-      string rowText = symbol +
-                       " | " + tfMain + ": " + DoubleToString(rsiMain, 1) + " " + statoMain +
-                       " | " + tfSecondary + ": " + DoubleToString(rsiSecondary, 1) + " " + statoSecondary +
-                       " | DIV " + tfMain + ": " + divMain +
-                       " | DIV " + tfSecondary + ": " + divSecondary;
-
-      DrawLabel("line_"+IntegerToString(count), x, y, rowText, 9, rowColor);
-      DrawButton("btn_"+symbol, x + 620, y - 2, "Vai", symbol, 45, 18);
+      DrawLabel("row_sym_"+IntegerToString(count),      x,       y, symbol,                                  9, rowColor);
+      DrawLabel("row_h4_"+IntegerToString(count),       x + 70,  y, DoubleToString(rsiMain, 1) + " " + stateMainCode,      9, rowColor);
+      DrawLabel("row_m15_"+IntegerToString(count),      x + 165, y, DoubleToString(rsiSecondary, 1) + " " + stateSecondaryCode, 9, rowColor);
+      DrawLabel("row_div_h4_"+IntegerToString(count),   x + 260, y, divMain,                                 9, rowColor);
+      DrawLabel("row_div_m15_"+IntegerToString(count),  x + 335, y, divSecondary,                            9, rowColor);
+      DrawButton("btn_"+symbol, x + 410, y - 2, "Vai", symbol, 45, 18);
 
       if(count < 20) y1 += 22; else y2 += 22;
       count++;
@@ -502,7 +528,7 @@ int OnInit()
 
    DrawLabel("title", 10, 10, title, 18, COLOR_BRAND_GREEN);
    DrawLabel("powered_by", 10, 35, poweredByText, 9, clrGray);
-   DrawButton("btn_update", 700, 35, "Aggiorna", "update", 80, 30);
+   DrawButton("btn_update", (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) - 110, 35, "Aggiorna", "update", 80, 30);
 
    UpdateDashboard();
    return(INIT_SUCCEEDED);
