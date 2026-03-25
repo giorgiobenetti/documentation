@@ -10,6 +10,9 @@ input ENUM_TIMEFRAMES rsiTimeframeMain = PERIOD_H4;
 input ENUM_TIMEFRAMES rsiTimeframeSecondary = PERIOD_M15;
 input double overbought = 70.0;
 input double oversold = 30.0;
+input int divergenceLookbackBars = 200;
+input int divergencePivotLeft = 2;
+input int divergencePivotRight = 2;
 
 // --- LICENZA
 input datetime expirationDate = D'2026.05.31 23:59:59';
@@ -84,6 +87,135 @@ color GetRsiStateColor(double value)
    if(value >= overbought) return(clrRed);
    if(value <= oversold)   return(COLOR_SIGNAL_GREEN);
    return(clrBlack);
+}
+
+bool IsSwingLow(const string symbol, ENUM_TIMEFRAMES tf, int shift, int leftBars, int rightBars)
+{
+   double center = iLow(symbol, tf, shift);
+   if(center <= 0) return(false);
+
+   for(int i = 1; i <= leftBars; i++)
+      if(iLow(symbol, tf, shift + i) <= center) return(false);
+
+   for(int j = 1; j <= rightBars; j++)
+      if(iLow(symbol, tf, shift - j) < center) return(false);
+
+   return(true);
+}
+
+bool IsSwingHigh(const string symbol, ENUM_TIMEFRAMES tf, int shift, int leftBars, int rightBars)
+{
+   double center = iHigh(symbol, tf, shift);
+   if(center <= 0) return(false);
+
+   for(int i = 1; i <= leftBars; i++)
+      if(iHigh(symbol, tf, shift + i) >= center) return(false);
+
+   for(int j = 1; j <= rightBars; j++)
+      if(iHigh(symbol, tf, shift - j) > center) return(false);
+
+   return(true);
+}
+
+bool FindRecentTwoSwingLows(const string symbol, ENUM_TIMEFRAMES tf, int lookbackBars, int leftBars, int rightBars, int &recentShift, int &olderShift)
+{
+   recentShift = -1;
+   olderShift = -1;
+
+   int totalBars = Bars(symbol, tf);
+   int startShift = rightBars + 1;
+   int endShift = MathMin(lookbackBars, totalBars - leftBars - 1);
+   if(endShift <= startShift) return(false);
+
+   for(int shift = startShift; shift <= endShift; shift++)
+   {
+      if(!IsSwingLow(symbol, tf, shift, leftBars, rightBars)) continue;
+
+      if(recentShift < 0) recentShift = shift;
+      else
+      {
+         olderShift = shift;
+         return(true);
+      }
+   }
+
+   return(false);
+}
+
+bool FindRecentTwoSwingHighs(const string symbol, ENUM_TIMEFRAMES tf, int lookbackBars, int leftBars, int rightBars, int &recentShift, int &olderShift)
+{
+   recentShift = -1;
+   olderShift = -1;
+
+   int totalBars = Bars(symbol, tf);
+   int startShift = rightBars + 1;
+   int endShift = MathMin(lookbackBars, totalBars - leftBars - 1);
+   if(endShift <= startShift) return(false);
+
+   for(int shift = startShift; shift <= endShift; shift++)
+   {
+      if(!IsSwingHigh(symbol, tf, shift, leftBars, rightBars)) continue;
+
+      if(recentShift < 0) recentShift = shift;
+      else
+      {
+         olderShift = shift;
+         return(true);
+      }
+   }
+
+   return(false);
+}
+
+int GetRsiDivergence(const string symbol, ENUM_TIMEFRAMES tf)
+{
+   bool bullish = false;
+   bool bearish = false;
+   int bullishShift = 1000000;
+   int bearishShift = 1000000;
+
+   int lowRecent = -1, lowOlder = -1;
+   if(FindRecentTwoSwingLows(symbol, tf, divergenceLookbackBars, divergencePivotLeft, divergencePivotRight, lowRecent, lowOlder))
+   {
+      double priceLowRecent = iLow(symbol, tf, lowRecent);
+      double priceLowOlder = iLow(symbol, tf, lowOlder);
+      double rsiLowRecent = iRSI(symbol, tf, rsiPeriod, PRICE_CLOSE, lowRecent);
+      double rsiLowOlder = iRSI(symbol, tf, rsiPeriod, PRICE_CLOSE, lowOlder);
+
+      if(priceLowRecent < priceLowOlder && rsiLowRecent > rsiLowOlder)
+      {
+         bullish = true;
+         bullishShift = lowRecent;
+      }
+   }
+
+   int highRecent = -1, highOlder = -1;
+   if(FindRecentTwoSwingHighs(symbol, tf, divergenceLookbackBars, divergencePivotLeft, divergencePivotRight, highRecent, highOlder))
+   {
+      double priceHighRecent = iHigh(symbol, tf, highRecent);
+      double priceHighOlder = iHigh(symbol, tf, highOlder);
+      double rsiHighRecent = iRSI(symbol, tf, rsiPeriod, PRICE_CLOSE, highRecent);
+      double rsiHighOlder = iRSI(symbol, tf, rsiPeriod, PRICE_CLOSE, highOlder);
+
+      if(priceHighRecent > priceHighOlder && rsiHighRecent < rsiHighOlder)
+      {
+         bearish = true;
+         bearishShift = highRecent;
+      }
+   }
+
+   if(bullish && bearish)
+      return((bullishShift < bearishShift) ? 1 : -1);
+   if(bullish) return(1);
+   if(bearish) return(-1);
+   return(0);
+}
+
+string DivergenceToText(int divType)
+{
+   if(divType > 0) return("Rialz");
+   if(divType < 0) return("Ribass");
+   return("-");
 }
 
 //+------------------------------------------------------------------+
@@ -318,6 +450,8 @@ void UpdateDashboard()
 
       string statoMain = GetRsiState(rsiMain);
       string statoSecondary = GetRsiState(rsiSecondary);
+      string divMain = DivergenceToText(GetRsiDivergence(symbol, rsiTimeframeMain));
+      string divSecondary = DivergenceToText(GetRsiDivergence(symbol, rsiTimeframeSecondary));
 
       // Colore riga basato solo sul timeframe principale (H4 di default).
       color rowColor = clrBlack;
@@ -328,11 +462,13 @@ void UpdateDashboard()
       int y = (count < 20) ? y1 : y2;
 
       string rowText = symbol +
-                       " | " + tfMain + ": " + DoubleToString(rsiMain, 2) + " " + statoMain +
-                       " | " + tfSecondary + ": " + DoubleToString(rsiSecondary, 2) + " " + statoSecondary;
+                       " | " + tfMain + ": " + DoubleToString(rsiMain, 1) + " " + statoMain +
+                       " | " + tfSecondary + ": " + DoubleToString(rsiSecondary, 1) + " " + statoSecondary +
+                       " | DIV " + tfMain + ": " + divMain +
+                       " | DIV " + tfSecondary + ": " + divSecondary;
 
       DrawLabel("line_"+IntegerToString(count), x, y, rowText, 9, rowColor);
-      DrawButton("btn_"+symbol, x + 430, y - 2, "Vai", symbol, 45, 18);
+      DrawButton("btn_"+symbol, x + 620, y - 2, "Vai", symbol, 45, 18);
 
       if(count < 20) y1 += 22; else y2 += 22;
       count++;
