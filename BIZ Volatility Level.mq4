@@ -6,7 +6,7 @@
 #property strict
 #property copyright "Investire.biz"
 #property link      "https://investire.biz/"
-#property version   "1.01"
+#property version   "1.02"
 #property indicator_chart_window
 #property indicator_buffers 4
 
@@ -154,13 +154,14 @@ void EnsureTrendLine(const string name, const color clr)
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
 }
 
-void DrawSegment(const string prefix, const int i, const datetime &time[], const double v1, const double v2, const color clr)
+void DrawSegment(const string prefix, const int shift, const datetime &time[], const double olderValue, const double newerValue, const color clr)
 {
-   if(i <= 0) return;
-   string name = prefix + IntegerToString(i);
+   if(shift < 0) return;
+   string name = prefix + IntegerToString(shift);
    EnsureTrendLine(name, clr);
-   ObjectMove(0, name, 0, time[i-1], v1);
-   ObjectMove(0, name, 1, time[i],   v2);
+   // Series mode: shift+1 is older bar, shift is newer/current bar.
+   ObjectMove(0, name, 0, time[shift + 1], olderValue);
+   ObjectMove(0, name, 1, time[shift],     newerValue);
 }
 
 void ClearDailySegments()
@@ -189,6 +190,12 @@ int OnInit()
    SetIndexBuffer(1, LowAvgWeeklyBuffer);
    SetIndexBuffer(2, HighAvgDailyBuffer);
    SetIndexBuffer(3, LowAvgDailyBuffer);
+
+   // Use native MT4 series indexing for all indicator buffers.
+   ArraySetAsSeries(HighAvgWeeklyBuffer, true);
+   ArraySetAsSeries(LowAvgWeeklyBuffer, true);
+   ArraySetAsSeries(HighAvgDailyBuffer, true);
+   ArraySetAsSeries(LowAvgDailyBuffer, true);
 
    SetIndexStyle(0, DRAW_LINE, STYLE_SOLID, 2, clrBlue);
    SetIndexStyle(1, DRAW_LINE, STYLE_SOLID, 2, clrBlue);
@@ -247,39 +254,45 @@ int OnCalculate(const int rates_total,
                 const long &volume[],
                 const int &spread[])
 {
-   if(rates_total <= 0)
+   if(rates_total <= 1)
       return 0;
 
-   // Force chronological indexing (0 = oldest, rates_total-1 = newest),
-   // matching the original MT5 code flow.
-   ArraySetAsSeries(time, false);
-   ArraySetAsSeries(open, false);
-   ArraySetAsSeries(high, false);
-   ArraySetAsSeries(low, false);
-   ArraySetAsSeries(close, false);
-   ArraySetAsSeries(tick_volume, false);
-   ArraySetAsSeries(volume, false);
-   ArraySetAsSeries(spread, false);
+   // Always recalculate the full history in native MT4 series mode:
+   // shift 0 = current bar, shift rates_total-1 = oldest bar.
+   ArraySetAsSeries(HighAvgWeeklyBuffer, true);
+   ArraySetAsSeries(LowAvgWeeklyBuffer, true);
+   ArraySetAsSeries(HighAvgDailyBuffer, true);
+   ArraySetAsSeries(LowAvgDailyBuffer, true);
 
-   int start = prev_calculated;
-   if(start == 0)
-   {
-      start = 1; // as in original MT5
-      currentDay = TimeDayOfWeek(time[0]);
-      massimo = high[0];
-      minimo = low[0];
-      massimoWeek = high[0];
-      minimoWeek = low[0];
-      HighAvgWeeklyBuffer[0] = EMPTY_VALUE;
-      LowAvgWeeklyBuffer[0] = EMPTY_VALUE;
-      HighAvgDailyBuffer[0] = EMPTY_VALUE;
-      LowAvgDailyBuffer[0] = EMPTY_VALUE;
-      ClearDailySegments();
-   }
+   ArrayInitialize(HighAvgWeeklyBuffer, EMPTY_VALUE);
+   ArrayInitialize(LowAvgWeeklyBuffer, EMPTY_VALUE);
+   ArrayInitialize(HighAvgDailyBuffer, EMPTY_VALUE);
+   ArrayInitialize(LowAvgDailyBuffer, EMPTY_VALUE);
 
-   for(int i = start; i < rates_total; i++)
+   ArrayResize(VolatilityMonday, 0);
+   ArrayResize(VolatilityTuesday, 0);
+   ArrayResize(VolatilityWednesday, 0);
+   ArrayResize(VolatilityThursday, 0);
+   ArrayResize(VolatilityFriday, 0);
+   ArrayResize(VolatilityWeekly, 0);
+   allarmeWeekly = 0;
+   StatoAllarmeWeekly = 0;
+   allarmeDaily = 0;
+   StatoAllarmeDaily = 0;
+   ClearDailySegments();
+
+   int oldest = rates_total - 1;
+   currentDay = TimeDayOfWeek(time[oldest]);
+   massimo = high[oldest];
+   minimo = low[oldest];
+   massimoWeek = high[oldest];
+   minimoWeek = low[oldest];
+
+   color labelColorCurrent = clrBlack;
+
+   for(int shift = rates_total - 2; shift >= 0; shift--)
    {
-      int dayOfWeek = TimeDayOfWeek(time[i]);
+      int dayOfWeek = TimeDayOfWeek(time[shift]);
 
       if(dayOfWeek != currentDay)
       {
@@ -294,8 +307,8 @@ int OnCalculate(const int rates_total,
             case 1:  // Lunedi
                ArrayResize(VolatilityMonday, ArraySize(VolatilityMonday) + 1);
                VolatilityMonday[ArraySize(VolatilityMonday) - 1] = daily_range;
-               massimo = high[i];
-               minimo = low[i];
+               massimo = high[shift];
+               minimo = low[shift];
                break;
             case 2:  // Martedi
                ArrayResize(VolatilityTuesday, ArraySize(VolatilityTuesday) + 1);
@@ -314,8 +327,8 @@ int OnCalculate(const int rates_total,
                VolatilityFriday[ArraySize(VolatilityFriday) - 1] = daily_range;
                ArrayResize(VolatilityWeekly, ArraySize(VolatilityWeekly) + 1);
                VolatilityWeekly[ArraySize(VolatilityWeekly) - 1] = weekly_range;
-               massimoWeek = high[i];
-               minimoWeek = low[i];
+               massimoWeek = high[shift];
+               minimoWeek = low[shift];
                break;
             case 6:  // Sabato
                break;
@@ -325,18 +338,18 @@ int OnCalculate(const int rates_total,
 
          // New day, reset highs and lows
          currentDay = dayOfWeek;
-         massimo = high[i];
-         minimo = low[i];
-         if(high[i] > massimoWeek) massimoWeek = high[i];
-         if(low[i] < minimoWeek) minimoWeek = low[i];
+         massimo = high[shift];
+         minimo = low[shift];
+         if(high[shift] > massimoWeek) massimoWeek = high[shift];
+         if(low[shift] < minimoWeek) minimoWeek = low[shift];
       }
       else
       {
          // Update current day and week highs/lows
-         if(high[i] > massimo) massimo = high[i];
-         if(low[i] < minimo) minimo = low[i];
-         if(high[i] > massimoWeek) massimoWeek = high[i];
-         if(low[i] < minimoWeek) minimoWeek = low[i];
+         if(high[shift] > massimo) massimo = high[shift];
+         if(low[shift] < minimo) minimo = low[shift];
+         if(high[shift] > massimoWeek) massimoWeek = high[shift];
+         if(low[shift] < minimoWeek) minimoWeek = low[shift];
       }
 
       // Ranges in pips
@@ -362,6 +375,8 @@ int OnCalculate(const int rates_total,
          case 5: currentAverage = AvgFridayBuffer; labelColor = coloreAvgFriday; break;
          default: break;
       }
+      if(shift == 0)
+         labelColorCurrent = labelColor;
 
       double livelloHighWeek = 0.0;
       double livelloLowWeek = 0.0;
@@ -376,8 +391,8 @@ int OnCalculate(const int rates_total,
          }
          else
          {
-            livelloHighWeek = HighAvgWeeklyBuffer[i-1];
-            livelloLowWeek  = LowAvgWeeklyBuffer[i-1];
+            livelloHighWeek = HighAvgWeeklyBuffer[shift + 1];
+            livelloLowWeek  = LowAvgWeeklyBuffer[shift + 1];
             if(StatoAllarmeWeekly == 0) allarmeWeekly = 1;
             StatoAllarmeWeekly = 1;
          }
@@ -388,8 +403,8 @@ int OnCalculate(const int rates_total,
          livelloLowWeek  = minimoWeek;
       }
 
-      HighAvgWeeklyBuffer[i] = livelloHighWeek;
-      LowAvgWeeklyBuffer[i] = livelloLowWeek;
+      HighAvgWeeklyBuffer[shift] = livelloHighWeek;
+      LowAvgWeeklyBuffer[shift] = livelloLowWeek;
 
       double livelloHighDay = 0.0;
       double livelloLowDay = 0.0;
@@ -404,8 +419,8 @@ int OnCalculate(const int rates_total,
          }
          else
          {
-            livelloHighDay = HighAvgDailyBuffer[i-1];
-            livelloLowDay  = LowAvgDailyBuffer[i-1];
+            livelloHighDay = HighAvgDailyBuffer[shift + 1];
+            livelloLowDay  = LowAvgDailyBuffer[shift + 1];
             if(StatoAllarmeDaily == 0) allarmeDaily = 1;
             StatoAllarmeDaily = 1;
          }
@@ -416,48 +431,45 @@ int OnCalculate(const int rates_total,
          livelloLowDay  = minimo;
       }
 
-      HighAvgDailyBuffer[i] = livelloHighDay;
-      LowAvgDailyBuffer[i] = livelloLowDay;
+      HighAvgDailyBuffer[shift] = livelloHighDay;
+      LowAvgDailyBuffer[shift] = livelloLowDay;
 
       // Draw daily segments in MT4 with same data, colored by day (visual layer only)
-      DrawSegment("BIZ_DAILY_H_", i, time, HighAvgDailyBuffer[i-1], HighAvgDailyBuffer[i], DayColor(currentDay));
-      DrawSegment("BIZ_DAILY_L_", i, time, LowAvgDailyBuffer[i-1],  LowAvgDailyBuffer[i],  DayColor(currentDay));
-
-      if(i == rates_total - 1)
-      {
-         // Weekly labels
-         string labelNameWeekHigh = "prezziVIEtichettaWeeklyHigh";
-         string labelNameWeekLow = "prezziVIEtichettaWeeklyLow";
-         ObjectDelete(0, labelNameWeekHigh);
-         ObjectDelete(0, labelNameWeekLow);
-         ArrowRightPriceCreate(0, labelNameWeekHigh, time[i], HighAvgWeeklyBuffer[i], coloreAvgSettimanale);
-         ArrowRightPriceCreate(0, labelNameWeekLow, time[i], LowAvgWeeklyBuffer[i], coloreAvgSettimanale);
-
-         // Daily labels
-         string labelNameDayHigh = "prezziVIEtichettaDailyHigh";
-         string labelNameDayLow = "prezziVIEtichettaDailyLow";
-         ObjectDelete(0, labelNameDayHigh);
-         ObjectDelete(0, labelNameDayLow);
-         ArrowRightPriceCreate(0, labelNameDayHigh, time[i], HighAvgDailyBuffer[i], labelColor);
-         ArrowRightPriceCreate(0, labelNameDayLow, time[i], LowAvgDailyBuffer[i], labelColor);
-
-         if(NotificheSettimanali && allarmeWeekly == 1)
-         {
-            string weeklyMessage = "Volatilita media settimanale superata su " + Symbol();
-            Alert(weeklyMessage);
-            SendNotification(weeklyMessage);
-            allarmeWeekly = 0;
-         }
-         if(NotificheGiornaliere && allarmeDaily == 1)
-         {
-            string dailyMessage = "Volatilita media giornaliera superata su " + Symbol();
-            Alert(dailyMessage);
-            SendNotification(dailyMessage);
-            allarmeDaily = 0;
-         }
-         ChartRedraw();
-      }
+      DrawSegment("BIZ_DAILY_H_", shift, time, HighAvgDailyBuffer[shift + 1], HighAvgDailyBuffer[shift], DayColor(currentDay));
+      DrawSegment("BIZ_DAILY_L_", shift, time, LowAvgDailyBuffer[shift + 1],  LowAvgDailyBuffer[shift],  DayColor(currentDay));
    }
+
+   // Weekly labels
+   string labelNameWeekHigh = "prezziVIEtichettaWeeklyHigh";
+   string labelNameWeekLow = "prezziVIEtichettaWeeklyLow";
+   ObjectDelete(0, labelNameWeekHigh);
+   ObjectDelete(0, labelNameWeekLow);
+   ArrowRightPriceCreate(0, labelNameWeekHigh, time[0], HighAvgWeeklyBuffer[0], coloreAvgSettimanale);
+   ArrowRightPriceCreate(0, labelNameWeekLow, time[0], LowAvgWeeklyBuffer[0], coloreAvgSettimanale);
+
+   // Daily labels
+   string labelNameDayHigh = "prezziVIEtichettaDailyHigh";
+   string labelNameDayLow = "prezziVIEtichettaDailyLow";
+   ObjectDelete(0, labelNameDayHigh);
+   ObjectDelete(0, labelNameDayLow);
+   ArrowRightPriceCreate(0, labelNameDayHigh, time[0], HighAvgDailyBuffer[0], labelColorCurrent);
+   ArrowRightPriceCreate(0, labelNameDayLow, time[0], LowAvgDailyBuffer[0], labelColorCurrent);
+
+   if(NotificheSettimanali && allarmeWeekly == 1)
+   {
+      string weeklyMessage = "Volatilita media settimanale superata su " + Symbol();
+      Alert(weeklyMessage);
+      SendNotification(weeklyMessage);
+      allarmeWeekly = 0;
+   }
+   if(NotificheGiornaliere && allarmeDaily == 1)
+   {
+      string dailyMessage = "Volatilita media giornaliera superata su " + Symbol();
+      Alert(dailyMessage);
+      SendNotification(dailyMessage);
+      allarmeDaily = 0;
+   }
+   ChartRedraw();
 
    return(rates_total);
 }
