@@ -40,5 +40,6 @@
 !/test/
 !/tsconfig.json
 !/webpack.config.js
+!/*.mq4
 tap-testdir*/
 !/cli/
