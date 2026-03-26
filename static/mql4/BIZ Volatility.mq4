@@ -1,77 +1,110 @@
 //+------------------------------------------------------------------+
 //|                                               BIZ Volatility.mq4 |
-//|                                  Copyright 2024, MetaQuotes Ltd. |
-//|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
 #property copyright "Investire.biz"
 #property link      "https://investire.biz/"
 #property version   "1.00"
 #property strict
 
-//+------------------------------------------------------------------+
-//| Indicator settings                                               |
-//+------------------------------------------------------------------+
 #property indicator_separate_window
-#property indicator_buffers 4
+#property indicator_buffers 12
 
-// plot 1 - Weekly Volatility
+// 0-1: weekly
 #property indicator_color1  clrYellow
 #property indicator_style1  STYLE_SOLID
 #property indicator_width1  2
-
-// plot 2 - Weekly Volatility Average
 #property indicator_color2  clrBlue
 #property indicator_style2  STYLE_SOLID
 #property indicator_width2  2
 
-// plot 3 - Daily Volatility
-#property indicator_color3  clrOrange
+// 2-6: daily histogram by weekday
+#property indicator_color3  C'255,165,0'
 #property indicator_style3  STYLE_SOLID
 #property indicator_width3  2
-
-// plot 4 - Daily Volatility Average
-#property indicator_color4  clrOrange
+#property indicator_color4  C'0,204,255'
 #property indicator_style4  STYLE_SOLID
 #property indicator_width4  2
+#property indicator_color5  C'0,255,0'
+#property indicator_style5  STYLE_SOLID
+#property indicator_width5  2
+#property indicator_color6  C'255,0,255'
+#property indicator_style6  STYLE_SOLID
+#property indicator_width6  2
+#property indicator_color7  C'155,2,255'
+#property indicator_style7  STYLE_SOLID
+#property indicator_width7  2
+
+// 7-11: daily average line by weekday
+#property indicator_color8  C'255,165,0'
+#property indicator_style8  STYLE_SOLID
+#property indicator_width8  2
+#property indicator_color9  C'0,204,255'
+#property indicator_style9  STYLE_SOLID
+#property indicator_width9  2
+#property indicator_color10 C'0,255,0'
+#property indicator_style10 STYLE_SOLID
+#property indicator_width10 2
+#property indicator_color11 C'255,0,255'
+#property indicator_style11 STYLE_SOLID
+#property indicator_width11 2
+#property indicator_color12 C'155,2,255'
+#property indicator_style12 STYLE_SOLID
+#property indicator_width12 2
 
 // --- Parametri licenza
-input string allowedServer = "IG-LIVE";               // Nome del server autorizzato
-string       supportEmail  = "info@investire.biz";    // Email supporto
-datetime expirationDate    = D'2026.04.07 00:00';
+input string allowedServer = "IG-LIVE";
+string       supportEmail  = "info@investire.biz";
+datetime     expirationDate = D'2026.04.07 00:00';
 
-//--- indicator buffers
+// Input
+input int   periodo               = 10;
+input bool  attLineeGrafiche      = false;
+input bool  NotificheSettimanali  = false;
+input bool  NotificheGiornaliere  = false;
+input color coloreAvgSettimanale  = clrBlue;
+input color coloreAvgMonday       = C'255,165,0';
+input color coloreAvgTuesday      = C'0,204,255';
+input color coloreAvgWednesday    = C'0,255,0';
+input color coloreAvgThursday     = C'255,0,255';
+input color coloreAvgFriday       = C'155,2,255';
+
+// Buffers
 double WeekyRangeBuffer[];
-double DailyRangeBuffer[];
 double AvgWeeklyBuffer[];
-double AvgDailyBuffer[];
 
-double AvgMondayBuffer;
-double AvgTuesdayBuffer;
-double AvgWednesdayBuffer;
-double AvgThursdayBuffer;
-double AvgFridayBuffer;
+double DailyMondayBuffer[];
+double DailyTuesdayBuffer[];
+double DailyWednesdayBuffer[];
+double DailyThursdayBuffer[];
+double DailyFridayBuffer[];
 
-//--- PIP_SIZE variable
-double PIP_SIZE;
+double AvgDailyMondayBuffer[];
+double AvgDailyTuesdayBuffer[];
+double AvgDailyWednesdayBuffer[];
+double AvgDailyThursdayBuffer[];
+double AvgDailyFridayBuffer[];
 
-//--- Variables for daily high and low
-double massimo;
-double minimo;
-double massimoWeek;
-double minimoWeek;
+// Runtime state
+double PIP_SIZE = 0.0;
+double massimo = 0.0;
+double minimo = 0.0;
+double massimoWeek = 0.0;
+double minimoWeek = 0.0;
 int    currentDay = -1;
 
-double livelloMassimoDaily;
-double livelloMinimoDaily;
-double livelloMassimoWeek;
-double livelloMinimoWeek;
+double livelloMassimoDaily = 0.0;
+double livelloMinimoDaily = 0.0;
+double livelloMassimoWeek = 0.0;
+double livelloMinimoWeek = 0.0;
 
-int allarmeWeekly      = 0;
+int allarmeWeekly = 0;
 int StatoAllarmeWeekly = 0;
-int allarmeDaily       = 0;
-int StatoAllarmeDaily  = 0;
+int allarmeDaily = 0;
+int StatoAllarmeDaily = 0;
 
-//--- Arrays for storing daily volatility by day of the week
+int g_indicatorWindow = 1;
+
+// Storico volatilita completata
 double VolatilityMonday[];
 double VolatilityTuesday[];
 double VolatilityWednesday[];
@@ -79,21 +112,16 @@ double VolatilityThursday[];
 double VolatilityFriday[];
 double VolatilityWeekly[];
 
-// Input variable for period to calculate average volatility
-input int  periodo               = 10;                       // Period
-input bool attLineeGrafiche      = false;                    // Level
-input bool NotificheSettimanali  = false;                    // Weekly Notification
-input bool NotificheGiornaliere  = false;                    // Daily Notification
-input color coloreAvgSettimanale = clrBlue;                  // Weekly Range Average
-input color coloreAvgMonday      = C'255,165,0';             // Monday Range Average
-input color coloreAvgTuesday     = C'0,204,255';             // Tuesday Range Average
-input color coloreAvgWednesday   = C'0,255,0';               // Wednesday Range Average
-input color coloreAvgThursday    = C'255,0,255';             // Thursday Range Average
-input color coloreAvgFriday      = C'155,2,255';             // Friday Range Average
+// Forward declarations
+void   indicatoreScaduto();
+double ArrayAverage(double &array[], int count);
+bool   ArrowRightPriceCreate(const long chart_ID=0,const string name="EtichettaVI",
+                             datetime time=0,double price=0,const color clr=clrRed);
+void   ChangeArrowEmptyPoint(datetime &time,double &price);
+bool   HLineCreate(const long chart_ID=0,const string name="VIHLine",
+                   double price=0,const ENUM_LINE_STYLE stile=STYLE_SOLID,
+                   const int width=1,const color clr=clrRed);
 
-//+------------------------------------------------------------------+
-//| Helpers                                                          |
-//+------------------------------------------------------------------+
 void DeleteObjectsByPrefix(const string prefix)
 {
    int total = ObjectsTotal(0, 0, -1);
@@ -105,7 +133,69 @@ void DeleteObjectsByPrefix(const string prefix)
    }
 }
 
-//--- License check (date + server) — NON intrusivo
+void UpdateIndicatorWindow()
+{
+   int wnd = WindowFind("BIZ Volatility");
+   if(wnd >= 1)
+      g_indicatorWindow = wnd;
+   else
+      g_indicatorWindow = 1;
+}
+
+void AppendValue(double &arr[], const double value)
+{
+   int n = ArraySize(arr);
+   ArrayResize(arr, n + 1);
+   arr[n] = value;
+}
+
+void ClearAllOutputBuffers(const int rates_total)
+{
+   for(int i = 0; i < rates_total; i++)
+   {
+      WeekyRangeBuffer[i] = EMPTY_VALUE;
+      AvgWeeklyBuffer[i] = EMPTY_VALUE;
+      DailyMondayBuffer[i] = EMPTY_VALUE;
+      DailyTuesdayBuffer[i] = EMPTY_VALUE;
+      DailyWednesdayBuffer[i] = EMPTY_VALUE;
+      DailyThursdayBuffer[i] = EMPTY_VALUE;
+      DailyFridayBuffer[i] = EMPTY_VALUE;
+      AvgDailyMondayBuffer[i] = EMPTY_VALUE;
+      AvgDailyTuesdayBuffer[i] = EMPTY_VALUE;
+      AvgDailyWednesdayBuffer[i] = EMPTY_VALUE;
+      AvgDailyThursdayBuffer[i] = EMPTY_VALUE;
+      AvgDailyFridayBuffer[i] = EMPTY_VALUE;
+   }
+}
+
+void SetDailyWeekdayPlots(const int i, const int dayOfWeek,
+                          const double dailyRange, const double dailyAverage)
+{
+   // Histogram
+   if(dayOfWeek == 1) DailyMondayBuffer[i] = dailyRange;
+   if(dayOfWeek == 2) DailyTuesdayBuffer[i] = dailyRange;
+   if(dayOfWeek == 3) DailyWednesdayBuffer[i] = dailyRange;
+   if(dayOfWeek == 4) DailyThursdayBuffer[i] = dailyRange;
+   if(dayOfWeek == 5) DailyFridayBuffer[i] = dailyRange;
+
+   // Average line
+   if(dayOfWeek == 1) AvgDailyMondayBuffer[i] = dailyAverage;
+   if(dayOfWeek == 2) AvgDailyTuesdayBuffer[i] = dailyAverage;
+   if(dayOfWeek == 3) AvgDailyWednesdayBuffer[i] = dailyAverage;
+   if(dayOfWeek == 4) AvgDailyThursdayBuffer[i] = dailyAverage;
+   if(dayOfWeek == 5) AvgDailyFridayBuffer[i] = dailyAverage;
+}
+
+color GetWeekdayColor(const int dayOfWeek)
+{
+   if(dayOfWeek == 1) return coloreAvgMonday;
+   if(dayOfWeek == 2) return coloreAvgTuesday;
+   if(dayOfWeek == 3) return coloreAvgWednesday;
+   if(dayOfWeek == 4) return coloreAvgThursday;
+   if(dayOfWeek == 5) return coloreAvgFriday;
+   return clrBlack;
+}
+
 bool CheckLicenseLocal(const datetime expiration, const string pSupportEmail,
                        const string productName, const string labelId,
                        const string pAllowedServer)
@@ -113,7 +203,6 @@ bool CheckLicenseLocal(const datetime expiration, const string pSupportEmail,
    datetime now = TimeCurrent();
    bool date_ok   = (now <= expiration);
    bool server_ok = (AccountServer() == pAllowedServer);
-
    if(date_ok && server_ok)
       return true;
 
@@ -124,7 +213,7 @@ bool CheckLicenseLocal(const datetime expiration, const string pSupportEmail,
    Print(fullMsg);
    MessageBox(fullMsg, "Errore Licenza", MB_OK | MB_ICONERROR);
 
-   const string labelIdLocal = (labelId == "" ? "BIZExpiredIndicatorText" : labelId);
+   string labelIdLocal = (labelId == "" ? "BIZExpiredIndicatorText" : labelId);
    if(ObjectFind(0, labelIdLocal) < 0)
       ObjectCreate(0, labelIdLocal, OBJ_LABEL, 0, 0, 0);
 
@@ -135,13 +224,9 @@ bool CheckLicenseLocal(const datetime expiration, const string pSupportEmail,
    ObjectSetInteger(0, labelIdLocal, OBJPROP_COLOR, clrRed);
    ObjectSetInteger(0, labelIdLocal, OBJPROP_FONTSIZE, 14);
    ObjectSetString(0, labelIdLocal, OBJPROP_FONT, "Arial");
-
    return false;
 }
 
-//+------------------------------------------------------------------+
-//| Custom indicator initialization function                         |
-//+------------------------------------------------------------------+
 int OnInit()
 {
    if(!CheckLicenseLocal(expirationDate, supportEmail, "BIZ Volatility", "BIZExpiredIndicatorText", allowedServer))
@@ -151,6 +236,7 @@ int OnInit()
    }
 
    IndicatorShortName("BIZ Volatility");
+   UpdateIndicatorWindow();
 
    SetIndexStyle(0, DRAW_HISTOGRAM, STYLE_SOLID, 2, clrYellow);
    SetIndexLabel(0, "Weekly Volatility");
@@ -160,40 +246,58 @@ int OnInit()
    SetIndexLabel(1, "Weekly Volatility Average");
    SetIndexBuffer(1, AvgWeeklyBuffer);
 
-   SetIndexStyle(2, DRAW_HISTOGRAM, STYLE_SOLID, 2, clrOrange);
-   SetIndexLabel(2, "Daily Volatility");
-   SetIndexBuffer(2, DailyRangeBuffer);
+   SetIndexStyle(2, DRAW_HISTOGRAM, STYLE_SOLID, 2, coloreAvgMonday);
+   SetIndexLabel(2, "Daily Volatility Monday");
+   SetIndexBuffer(2, DailyMondayBuffer);
 
-   SetIndexStyle(3, DRAW_LINE, STYLE_SOLID, 2, clrOrange);
-   SetIndexLabel(3, "Daily Volatility Average");
-   SetIndexBuffer(3, AvgDailyBuffer);
+   SetIndexStyle(3, DRAW_HISTOGRAM, STYLE_SOLID, 2, coloreAvgTuesday);
+   SetIndexLabel(3, "Daily Volatility Tuesday");
+   SetIndexBuffer(3, DailyTuesdayBuffer);
 
-   //--- Determine the PIP_SIZE based on the current symbol
-   PIP_SIZE = Point * 10.0;
+   SetIndexStyle(4, DRAW_HISTOGRAM, STYLE_SOLID, 2, coloreAvgWednesday);
+   SetIndexLabel(4, "Daily Volatility Wednesday");
+   SetIndexBuffer(4, DailyWednesdayBuffer);
 
-   // Initialize the arrays
-   ArrayResize(VolatilityMonday, 0);
-   ArrayResize(VolatilityTuesday, 0);
-   ArrayResize(VolatilityWednesday, 0);
-   ArrayResize(VolatilityThursday, 0);
-   ArrayResize(VolatilityFriday, 0);
-   ArrayResize(VolatilityWeekly, 0);
+   SetIndexStyle(5, DRAW_HISTOGRAM, STYLE_SOLID, 2, coloreAvgThursday);
+   SetIndexLabel(5, "Daily Volatility Thursday");
+   SetIndexBuffer(5, DailyThursdayBuffer);
+
+   SetIndexStyle(6, DRAW_HISTOGRAM, STYLE_SOLID, 2, coloreAvgFriday);
+   SetIndexLabel(6, "Daily Volatility Friday");
+   SetIndexBuffer(6, DailyFridayBuffer);
+
+   SetIndexStyle(7, DRAW_LINE, STYLE_SOLID, 2, coloreAvgMonday);
+   SetIndexLabel(7, "Daily Volatility Average Monday");
+   SetIndexBuffer(7, AvgDailyMondayBuffer);
+
+   SetIndexStyle(8, DRAW_LINE, STYLE_SOLID, 2, coloreAvgTuesday);
+   SetIndexLabel(8, "Daily Volatility Average Tuesday");
+   SetIndexBuffer(8, AvgDailyTuesdayBuffer);
+
+   SetIndexStyle(9, DRAW_LINE, STYLE_SOLID, 2, coloreAvgWednesday);
+   SetIndexLabel(9, "Daily Volatility Average Wednesday");
+   SetIndexBuffer(9, AvgDailyWednesdayBuffer);
+
+   SetIndexStyle(10, DRAW_LINE, STYLE_SOLID, 2, coloreAvgThursday);
+   SetIndexLabel(10, "Daily Volatility Average Thursday");
+   SetIndexBuffer(10, AvgDailyThursdayBuffer);
+
+   SetIndexStyle(11, DRAW_LINE, STYLE_SOLID, 2, coloreAvgFriday);
+   SetIndexLabel(11, "Daily Volatility Average Friday");
+   SetIndexBuffer(11, AvgDailyFridayBuffer);
+
+   // Use classic pip logic for 3/5-digit symbols.
+   PIP_SIZE = ((Digits == 3 || Digits == 5) ? Point * 10.0 : Point);
 
    return(INIT_SUCCEEDED);
 }
 
-//+------------------------------------------------------------------+
-//| FUNZIONE DI DEINIZIALIZZAZIONE                                   |
-//+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
    DeleteObjectsByPrefix("BIZExpiredIndicatorText");
    DeleteObjectsByPrefix("VI");
 }
 
-//+------------------------------------------------------------------+
-//| Custom indicator iteration function                              |
-//+------------------------------------------------------------------+
 int OnCalculate(const int rates_total,
                 const int prev_calculated,
                 const datetime &time[],
@@ -205,27 +309,35 @@ int OnCalculate(const int rates_total,
                 const long &volume[],
                 const int &spread[])
 {
-   if(rates_total <= 0)
+   if(rates_total < 2)
       return 0;
 
-   int start = prev_calculated;
-   if(start == 0)
-   {
-      start = 1;
-      MqlDateTime firstBarTime;
-      TimeToStruct(time[0], firstBarTime);
-      currentDay = firstBarTime.day_of_week;
-      massimo = high[0];
-      minimo = low[0];
-      massimoWeek = high[0];
-      minimoWeek = low[0];
-   }
+   UpdateIndicatorWindow();
+   ClearAllOutputBuffers(rates_total);
 
-   for(int i = start; i < rates_total; i++)
+   ArrayResize(VolatilityMonday, 0);
+   ArrayResize(VolatilityTuesday, 0);
+   ArrayResize(VolatilityWednesday, 0);
+   ArrayResize(VolatilityThursday, 0);
+   ArrayResize(VolatilityFriday, 0);
+   ArrayResize(VolatilityWeekly, 0);
+
+   allarmeWeekly = 0;
+   StatoAllarmeWeekly = 0;
+   allarmeDaily = 0;
+   StatoAllarmeDaily = 0;
+
+   // In MT4 these arrays are timeseries (0 = current bar), so process oldest -> newest.
+   int oldest = rates_total - 1;
+   currentDay = TimeDayOfWeek(time[oldest]);
+   massimo = high[oldest];
+   minimo = low[oldest];
+   massimoWeek = high[oldest];
+   minimoWeek = low[oldest];
+
+   for(int i = oldest - 1; i >= 0; i--)
    {
-      MqlDateTime currentTime;
-      TimeToStruct(time[i], currentTime);
-      int dayOfWeek = currentTime.day_of_week;
+      int dayOfWeek = TimeDayOfWeek(time[i]);
 
       if(dayOfWeek != currentDay)
       {
@@ -234,108 +346,66 @@ int OnCalculate(const int rates_total,
 
          switch(currentDay)
          {
-            case 0:  // Domenica
-               break;
-            case 1:  // Lunedì
-               ArrayResize(VolatilityMonday, ArraySize(VolatilityMonday) + 1);
-               VolatilityMonday[ArraySize(VolatilityMonday) - 1] = daily_range;
-               massimo = high[i];
-               minimo = low[i];
-               break;
-            case 2:  // Martedì
-               ArrayResize(VolatilityTuesday, ArraySize(VolatilityTuesday) + 1);
-               VolatilityTuesday[ArraySize(VolatilityTuesday) - 1] = daily_range;
-               break;
-            case 3:  // Mercoledì
-               ArrayResize(VolatilityWednesday, ArraySize(VolatilityWednesday) + 1);
-               VolatilityWednesday[ArraySize(VolatilityWednesday) - 1] = daily_range;
-               break;
-            case 4:  // Giovedì
-               ArrayResize(VolatilityThursday, ArraySize(VolatilityThursday) + 1);
-               VolatilityThursday[ArraySize(VolatilityThursday) - 1] = daily_range;
-               break;
-            case 5:  // Venerdì
-               ArrayResize(VolatilityFriday, ArraySize(VolatilityFriday) + 1);
-               VolatilityFriday[ArraySize(VolatilityFriday) - 1] = daily_range;
-               ArrayResize(VolatilityWeekly, ArraySize(VolatilityWeekly) + 1);
-               VolatilityWeekly[ArraySize(VolatilityWeekly) - 1] = weekly_range;
+            case 1: AppendValue(VolatilityMonday, daily_range); break;
+            case 2: AppendValue(VolatilityTuesday, daily_range); break;
+            case 3: AppendValue(VolatilityWednesday, daily_range); break;
+            case 4: AppendValue(VolatilityThursday, daily_range); break;
+            case 5:
+               AppendValue(VolatilityFriday, daily_range);
+               AppendValue(VolatilityWeekly, weekly_range);
                massimoWeek = high[i];
                minimoWeek = low[i];
                break;
-            case 6:  // Sabato
-               break;
-            default:
-               break;
+            default: break; // 0 and 6 ignored
          }
 
          currentDay = dayOfWeek;
          massimo = high[i];
          minimo = low[i];
-         if(high[i] > massimoWeek)
-            massimoWeek = high[i];
-         if(low[i] < minimoWeek)
-            minimoWeek = low[i];
+
+         if(high[i] > massimoWeek) massimoWeek = high[i];
+         if(low[i] < minimoWeek) minimoWeek = low[i];
       }
       else
       {
-         if(high[i] > massimo)
-            massimo = high[i];
-         if(low[i] < minimo)
-            minimo = low[i];
-
-         if(high[i] > massimoWeek)
-            massimoWeek = high[i];
-         if(low[i] < minimoWeek)
-            minimoWeek = low[i];
+         if(high[i] > massimo) massimo = high[i];
+         if(low[i] < minimo) minimo = low[i];
+         if(high[i] > massimoWeek) massimoWeek = high[i];
+         if(low[i] < minimoWeek) minimoWeek = low[i];
       }
 
-      DailyRangeBuffer[i] = MathRound((massimo - minimo) / PIP_SIZE);
-      WeekyRangeBuffer[i] = MathRound((massimoWeek - minimoWeek) / PIP_SIZE);
-      AvgWeeklyBuffer[i] = MathRound(ArrayAverage(VolatilityWeekly, MathMin(periodo, ArraySize(VolatilityWeekly))));
+      double dailyRange = MathRound((massimo - minimo) / PIP_SIZE);
+      double weeklyRange = MathRound((massimoWeek - minimoWeek) / PIP_SIZE);
+      double avgWeekly = MathRound(ArrayAverage(VolatilityWeekly, MathMin(periodo, ArraySize(VolatilityWeekly))));
 
-      AvgMondayBuffer = MathRound(ArrayAverage(VolatilityMonday, MathMin(periodo, ArraySize(VolatilityMonday))));
-      AvgTuesdayBuffer = MathRound(ArrayAverage(VolatilityTuesday, MathMin(periodo, ArraySize(VolatilityTuesday))));
-      AvgWednesdayBuffer = MathRound(ArrayAverage(VolatilityWednesday, MathMin(periodo, ArraySize(VolatilityWednesday))));
-      AvgThursdayBuffer = MathRound(ArrayAverage(VolatilityThursday, MathMin(periodo, ArraySize(VolatilityThursday))));
-      AvgFridayBuffer = MathRound(ArrayAverage(VolatilityFriday, MathMin(periodo, ArraySize(VolatilityFriday))));
+      double avgMon = MathRound(ArrayAverage(VolatilityMonday, MathMin(periodo, ArraySize(VolatilityMonday))));
+      double avgTue = MathRound(ArrayAverage(VolatilityTuesday, MathMin(periodo, ArraySize(VolatilityTuesday))));
+      double avgWed = MathRound(ArrayAverage(VolatilityWednesday, MathMin(periodo, ArraySize(VolatilityWednesday))));
+      double avgThu = MathRound(ArrayAverage(VolatilityThursday, MathMin(periodo, ArraySize(VolatilityThursday))));
+      double avgFri = MathRound(ArrayAverage(VolatilityFriday, MathMin(periodo, ArraySize(VolatilityFriday))));
 
       double currentAverage = 0.0;
-      color  labelColor = clrBlack;
-
       switch(currentDay)
       {
-         case 1:
-            currentAverage = AvgMondayBuffer;
-            labelColor = coloreAvgMonday;
-            break;
-         case 2:
-            currentAverage = AvgTuesdayBuffer;
-            labelColor = coloreAvgTuesday;
-            break;
-         case 3:
-            currentAverage = AvgWednesdayBuffer;
-            labelColor = coloreAvgWednesday;
-            break;
-         case 4:
-            currentAverage = AvgThursdayBuffer;
-            labelColor = coloreAvgThursday;
-            break;
-         case 5:
-            currentAverage = AvgFridayBuffer;
-            labelColor = coloreAvgFriday;
-            break;
-         default:
-            break;
+         case 1: currentAverage = avgMon; break;
+         case 2: currentAverage = avgTue; break;
+         case 3: currentAverage = avgWed; break;
+         case 4: currentAverage = avgThu; break;
+         case 5: currentAverage = avgFri; break;
+         default: currentAverage = 0.0; break;
       }
+      color labelColor = GetWeekdayColor(currentDay);
 
-      AvgDailyBuffer[i] = currentAverage;
+      WeekyRangeBuffer[i] = weeklyRange;
+      AvgWeeklyBuffer[i] = avgWeekly;
+      SetDailyWeekdayPlots(i, currentDay, dailyRange, currentAverage);
 
-      if(AvgWeeklyBuffer[i] > 0.0)
+      if(avgWeekly > 0.0)
       {
-         if(WeekyRangeBuffer[i] < AvgWeeklyBuffer[i])
+         if(weeklyRange < avgWeekly)
          {
-            livelloMassimoWeek = minimoWeek + AvgWeeklyBuffer[i] * PIP_SIZE;
-            livelloMinimoWeek = massimoWeek - AvgWeeklyBuffer[i] * PIP_SIZE;
+            livelloMassimoWeek = minimoWeek + avgWeekly * PIP_SIZE;
+            livelloMinimoWeek = massimoWeek - avgWeekly * PIP_SIZE;
             StatoAllarmeWeekly = 0;
             allarmeWeekly = 0;
          }
@@ -349,7 +419,7 @@ int OnCalculate(const int rates_total,
 
       if(currentAverage > 0.0)
       {
-         if(currentAverage > DailyRangeBuffer[i])
+         if(currentAverage > dailyRange)
          {
             livelloMassimoDaily = minimo + currentAverage * PIP_SIZE;
             livelloMinimoDaily = massimo - currentAverage * PIP_SIZE;
@@ -364,27 +434,25 @@ int OnCalculate(const int rates_total,
          }
       }
 
-      if(i == rates_total - 1)
+      // Latest bar for MT4 timeseries.
+      if(i == 0)
       {
-         string labelName = "VIEtichettaWeekly";
-         ObjectDelete(0, labelName);
-         ArrowRightPriceCreate(0, labelName, time[i], AvgWeeklyBuffer[i], coloreAvgSettimanale);
-
-         labelName = "VIEtichettaDaily";
-         ObjectDelete(0, labelName);
-         ArrowRightPriceCreate(0, labelName, time[i], currentAverage, labelColor);
+         ArrowRightPriceCreate(0, "VIEtichettaWeekly", time[0], avgWeekly, coloreAvgSettimanale);
+         ArrowRightPriceCreate(0, "VIEtichettaDaily", time[0], currentAverage, labelColor);
 
          if(attLineeGrafiche)
          {
-            ObjectDelete(0, "VIHLine1Weekly");
-            ObjectDelete(0, "VIHLine2Weekly");
             HLineCreate(0, "VIHLine1Weekly", livelloMassimoWeek, STYLE_SOLID, 2, coloreAvgSettimanale);
             HLineCreate(0, "VIHLine2Weekly", livelloMinimoWeek, STYLE_SOLID, 2, coloreAvgSettimanale);
-
-            ObjectDelete(0, "VIHLine1");
-            ObjectDelete(0, "VIHLine2");
             HLineCreate(0, "VIHLine1", livelloMassimoDaily, STYLE_SOLID, 2, labelColor);
             HLineCreate(0, "VIHLine2", livelloMinimoDaily, STYLE_SOLID, 2, labelColor);
+         }
+         else
+         {
+            ObjectDelete(0, "VIHLine1Weekly");
+            ObjectDelete(0, "VIHLine2Weekly");
+            ObjectDelete(0, "VIHLine1");
+            ObjectDelete(0, "VIHLine2");
          }
 
          if(NotificheSettimanali && allarmeWeekly == 1)
@@ -394,6 +462,7 @@ int OnCalculate(const int rates_total,
             SendNotification(weeklyMessage);
             allarmeWeekly = 0;
          }
+
          if(NotificheGiornaliere && allarmeDaily == 1)
          {
             string dailyMessage = "Volatilita media giornaliera superata su " + Symbol();
@@ -401,17 +470,13 @@ int OnCalculate(const int rates_total,
             SendNotification(dailyMessage);
             allarmeDaily = 0;
          }
-
-         ChartRedraw(0);
       }
    }
 
+   ChartRedraw(0);
    return rates_total;
 }
 
-//+------------------------------------------------------------------+
-//| FUNZIONE INDICATORE SCADUTO                                      |
-//+------------------------------------------------------------------+
 void indicatoreScaduto()
 {
    long chart_width = ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
@@ -440,36 +505,34 @@ void indicatoreScaduto()
    ObjectSetInteger(0, "BIZExpiredIndicatorText2", OBJPROP_ANCHOR, ANCHOR_CENTER);
 }
 
-//+--------------------------------------------------------------------------------+
-//| Function to calculate average of an array                                      |
-//+--------------------------------------------------------------------------------+
 double ArrayAverage(double &array[], int count)
 {
    if(count <= 0 || ArraySize(array) == 0)
       return 0.0;
 
    count = MathMin(count, ArraySize(array));
+
    double sum = 0.0;
    for(int i = ArraySize(array) - count; i < ArraySize(array); i++)
       sum += array[i];
 
-   return (sum / count);
+   return sum / count;
 }
 
-//+--------------------------------------------------------------------------------+
-//| Crea l'etichetta prezzo a destra                                               |
-//+--------------------------------------------------------------------------------+
-bool ArrowRightPriceCreate(const long chart_ID = 0,
-                           const string name = "EtichettaVI",
-                           datetime time = 0,
-                           double price = 0,
-                           const color clr = clrRed)
+bool ArrowRightPriceCreate(const long chart_ID,
+                           const string name,
+                           datetime time,
+                           double price,
+                           const color clr)
 {
    ChangeArrowEmptyPoint(time, price);
+   if(ObjectFind(chart_ID, name) >= 0)
+      ObjectDelete(chart_ID, name);
+
    ResetLastError();
-   if(!ObjectCreate(chart_ID, name, OBJ_ARROW_RIGHT_PRICE, 1, time, price))
+   if(!ObjectCreate(chart_ID, name, OBJ_ARROW_RIGHT_PRICE, g_indicatorWindow, time, price))
    {
-      Print(__FUNCTION__, ": fallimento nella creazione dell'etichetta prezzo a destra! Error code = ", GetLastError());
+      Print(__FUNCTION__, ": failed creating right-price label. Error=", GetLastError());
       return false;
    }
 
@@ -484,10 +547,7 @@ bool ArrowRightPriceCreate(const long chart_ID = 0,
    return true;
 }
 
-//+--------------------------------------------------------------------------------+
-//| Controlla i valori di punto di ancoraggio                                      |
-//+--------------------------------------------------------------------------------+
-void ChangeArrowEmptyPoint(datetime &time, double &price)
+void ChangeArrowEmptyPoint(datetime &time,double &price)
 {
    if(!time)
       time = TimeCurrent();
@@ -495,23 +555,23 @@ void ChangeArrowEmptyPoint(datetime &time, double &price)
       price = Bid;
 }
 
-//+--------------------------------------------------------------------------------+
-//| Crea la linea orizzontale                                                      |
-//+--------------------------------------------------------------------------------+
-bool HLineCreate(const long chart_ID = 0,
-                 const string name = "VIHLine",
-                 double price = 0,
-                 const ENUM_LINE_STYLE stile = STYLE_SOLID,
-                 const int width = 1,
-                 const color clr = clrRed)
+bool HLineCreate(const long chart_ID,
+                 const string name,
+                 double price,
+                 const ENUM_LINE_STYLE stile,
+                 const int width,
+                 const color clr)
 {
    if(!price)
       price = Bid;
 
+   if(ObjectFind(chart_ID, name) >= 0)
+      ObjectDelete(chart_ID, name);
+
    ResetLastError();
-   if(!ObjectCreate(chart_ID, name, OBJ_HLINE, 0, 0, price))
+   if(!ObjectCreate(chart_ID, name, OBJ_HLINE, g_indicatorWindow, 0, price))
    {
-      Print(__FUNCTION__, ": fallimento nel creare la linea orizzontale! Error code = ", GetLastError());
+      Print(__FUNCTION__, ": failed creating horizontal line. Error=", GetLastError());
       return false;
    }
 
