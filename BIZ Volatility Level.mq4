@@ -497,7 +497,7 @@ bool GetDailyProjection(const datetime barTime, const int lookback, double &leve
    {
       datetime t = iTime(Symbol(), PERIOD_D1, s);
       int dow = TimeDayOfWeek(t);
-      if(EscludiDomenica && dow == 0)
+      if((EscludiDomenica && dow == 0) || dow == 6)
          continue;
 
       datetime prevDayStart = t;
@@ -531,7 +531,8 @@ bool GetDailyProjection(const datetime barTime, const int lookback, double &leve
       int dow2 = GetNormalizedWeekday(t2);
       if(dow2 != dayOfWeek)
          continue;
-      if(EscludiDomenica && TimeDayOfWeek(t2) == 0)
+      int sampleDowRaw = TimeDayOfWeek(t2);
+      if((EscludiDomenica && sampleDowRaw == 0) || sampleDowRaw == 6)
          continue;
 
       datetime dayStart = iTime(Symbol(), PERIOD_D1, s2);
@@ -581,9 +582,31 @@ bool GetWeeklyProjection(const datetime barTime, const int lookback, double &lev
    if(weekShift < 0)
       return(false);
 
-   double baseHi = 0.0, baseLo = 0.0, baseClose = 0.0;
-   if(!GetWeekStatsNoSunday(weekShift + 1, baseHi, baseLo, baseClose))
+   double baseHi = 0.0, baseLo = 0.0, baseCloseRaw = 0.0;
+   if(!GetWeekStatsNoSunday(weekShift + 1, baseHi, baseLo, baseCloseRaw))
       return(false);
+   // Base settimanale: close del venerdi della settimana precedente.
+   double baseClose = 0.0;
+   int prevShift = weekShift + 1;
+   datetime prevWOpen = iTime(Symbol(), PERIOD_W1, prevShift);
+   datetime prevWEnd = (prevShift > 0 ? iTime(Symbol(), PERIOD_W1, prevShift - 1) : prevWOpen + 7 * 24 * 60 * 60);
+   int d1Bars = iBars(Symbol(), PERIOD_D1);
+   for(int d = 0; d < d1Bars; d++)
+   {
+      datetime dt = iTime(Symbol(), PERIOD_D1, d);
+      if(dt < prevWOpen || dt >= prevWEnd)
+         continue;
+      if(TimeDayOfWeek(dt) != 5) // Friday
+         continue;
+      double fridayClose = iClose(Symbol(), PERIOD_D1, d);
+      if(fridayClose > 0.0)
+      {
+         baseClose = fridayClose;
+         break;
+      }
+   }
+   if(baseClose <= 0.0)
+      baseClose = baseCloseRaw;
 
    int w1Bars = iBars(Symbol(), PERIOD_W1);
    double sum = 0.0;
