@@ -12,7 +12,7 @@
 //| Indicator settings                                               |
 //+------------------------------------------------------------------+
 #property indicator_separate_window
-#property indicator_buffers 6
+#property indicator_buffers 4
 
 // plot 1 - Weekly Volatility
 #property indicator_color1  clrYellow
@@ -24,13 +24,13 @@
 #property indicator_style2  STYLE_SOLID
 #property indicator_width2  2
 
-// plot 3 - Daily Volatility (color histogram by weekday)
-#property indicator_color3  C'255,165,0',C'0,204,255',C'0,255,0',C'255,0,255',C'155,2,255'
+// plot 3 - Daily Volatility
+#property indicator_color3  clrOrange
 #property indicator_style3  STYLE_SOLID
 #property indicator_width3  2
 
-// plot 4 - Daily Volatility Average (color line by weekday)
-#property indicator_color4  C'255,165,0',C'0,204,255',C'0,255,0',C'255,0,255',C'155,2,255'
+// plot 4 - Daily Volatility Average
+#property indicator_color4  clrOrange
 #property indicator_style4  STYLE_SOLID
 #property indicator_width4  2
 
@@ -44,8 +44,6 @@ double WeekyRangeBuffer[];
 double DailyRangeBuffer[];
 double AvgWeeklyBuffer[];
 double AvgDailyBuffer[];
-double ColorDailyBuffer[];
-double ColorAvgDailyBuffer[];
 
 double AvgMondayBuffer;
 double AvgTuesdayBuffer;
@@ -162,15 +160,13 @@ int OnInit()
    SetIndexLabel(1, "Weekly Volatility Average");
    SetIndexBuffer(1, AvgWeeklyBuffer);
 
-   SetIndexStyle(2, DRAW_COLOR_HISTOGRAM, STYLE_SOLID, 2);
+   SetIndexStyle(2, DRAW_HISTOGRAM, STYLE_SOLID, 2, clrOrange);
    SetIndexLabel(2, "Daily Volatility");
    SetIndexBuffer(2, DailyRangeBuffer);
-   SetIndexBuffer(3, ColorDailyBuffer);
 
-   SetIndexStyle(3, DRAW_COLOR_LINE, STYLE_SOLID, 2);
+   SetIndexStyle(3, DRAW_LINE, STYLE_SOLID, 2, clrOrange);
    SetIndexLabel(3, "Daily Volatility Average");
-   SetIndexBuffer(4, AvgDailyBuffer);
-   SetIndexBuffer(5, ColorAvgDailyBuffer);
+   SetIndexBuffer(3, AvgDailyBuffer);
 
    //--- Determine the PIP_SIZE based on the current symbol
    PIP_SIZE = Point * 10.0;
@@ -305,42 +301,34 @@ int OnCalculate(const int rates_total,
 
       double currentAverage = 0.0;
       color  labelColor = clrBlack;
-      int    colorindex = 0;
 
       switch(currentDay)
       {
          case 1:
             currentAverage = AvgMondayBuffer;
             labelColor = coloreAvgMonday;
-            colorindex = 0;
             break;
          case 2:
             currentAverage = AvgTuesdayBuffer;
             labelColor = coloreAvgTuesday;
-            colorindex = 1;
             break;
          case 3:
             currentAverage = AvgWednesdayBuffer;
             labelColor = coloreAvgWednesday;
-            colorindex = 2;
             break;
          case 4:
             currentAverage = AvgThursdayBuffer;
             labelColor = coloreAvgThursday;
-            colorindex = 3;
             break;
          case 5:
             currentAverage = AvgFridayBuffer;
             labelColor = coloreAvgFriday;
-            colorindex = 4;
             break;
          default:
             break;
       }
 
       AvgDailyBuffer[i] = currentAverage;
-      ColorDailyBuffer[i] = colorindex;
-      ColorAvgDailyBuffer[i] = colorindex;
 
       if(AvgWeeklyBuffer[i] > 0.0)
       {
