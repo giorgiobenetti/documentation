@@ -8,7 +8,7 @@
 #property link      "https://investire.biz/"
 #property version   "1.00"
 #property indicator_chart_window
-#property indicator_buffers 6
+#property indicator_buffers 4
 
 // plot Volatilita' settimanale
 #property indicator_label1  "High Weekly Volatility Average"
@@ -26,14 +26,14 @@
 
 // plot Volatilita' giornaliera
 #property indicator_label3  "High Daily Volatility Average"
-#property indicator_type3   DRAW_COLOR_LINE
-#property indicator_color3  C'255,165,0',C'0,204,255',C'0,255,0',C'255,0,255',C'155,2,255'
+#property indicator_type3   DRAW_LINE
+#property indicator_color3  clrOrange
 #property indicator_style3  STYLE_SOLID
 #property indicator_width3  2
 
 #property indicator_label4  "Low Daily Volatility Average"
-#property indicator_type4   DRAW_COLOR_LINE
-#property indicator_color4  C'255,165,0',C'0,204,255',C'0,255,0',C'255,0,255',C'155,2,255'
+#property indicator_type4   DRAW_LINE
+#property indicator_color4  clrOrange
 #property indicator_style4  STYLE_SOLID
 #property indicator_width4  2
 
@@ -58,9 +58,6 @@ double HighAvgWeeklyBuffer[];
 double LowAvgWeeklyBuffer[];
 double HighAvgDailyBuffer[];
 double LowAvgDailyBuffer[];
-double ColorAvgDailyBuffer[];
-double ColorAvgDailyBuffer2[];
-
 double WeekyRangeBuffer;
 double DailyRangeBuffer;
 double AvgWeeklyBuffer;
@@ -143,23 +140,21 @@ int OnInit()
       return(INIT_SUCCEEDED);
    }
 
-   IndicatorBuffers(6);
+   IndicatorBuffers(4);
    SetIndexBuffer(0, HighAvgWeeklyBuffer, INDICATOR_DATA);
    SetIndexBuffer(1, LowAvgWeeklyBuffer, INDICATOR_DATA);
    SetIndexBuffer(2, HighAvgDailyBuffer, INDICATOR_DATA);
-   SetIndexBuffer(3, ColorAvgDailyBuffer, INDICATOR_COLOR_INDEX);
-   SetIndexBuffer(4, LowAvgDailyBuffer, INDICATOR_DATA);
-   SetIndexBuffer(5, ColorAvgDailyBuffer2, INDICATOR_COLOR_INDEX);
+   SetIndexBuffer(3, LowAvgDailyBuffer, INDICATOR_DATA);
 
    SetIndexStyle(0, DRAW_LINE, STYLE_SOLID, 2, clrBlue);
    SetIndexStyle(1, DRAW_LINE, STYLE_SOLID, 2, clrBlue);
-   SetIndexStyle(2, DRAW_COLOR_LINE, STYLE_SOLID, 2);
-   SetIndexStyle(4, DRAW_COLOR_LINE, STYLE_SOLID, 2);
+   SetIndexStyle(2, DRAW_LINE, STYLE_SOLID, 2, clrOrange);
+   SetIndexStyle(3, DRAW_LINE, STYLE_SOLID, 2, clrOrange);
 
    SetIndexLabel(0, "High Weekly Volatility Average");
    SetIndexLabel(1, "Low Weekly Volatility Average");
    SetIndexLabel(2, "High Daily Volatility Average");
-   SetIndexLabel(4, "Low Daily Volatility Average");
+   SetIndexLabel(3, "Low Daily Volatility Average");
 
    //--- Determine the PIP_SIZE based on the current symbol
    PIP_SIZE = MarketInfo(Symbol(), MODE_POINT) * 10.0;
@@ -295,44 +290,35 @@ int OnCalculate(const int rates_total,
       AvgThursdayBuffer = MathRound(ArrayAverage(VolatilityThursday, MathMin(periodo, ArraySize(VolatilityThursday))));
       AvgFridayBuffer = MathRound(ArrayAverage(VolatilityFriday, MathMin(periodo, ArraySize(VolatilityFriday))));
 
-      // Select daily average and color index for the current weekday
+      // Select daily average and label color for the current weekday
       double currentAverage = 0.0;
       color labelColor = clrBlack;
-      int colorindex = 0;
 
       switch(currentDay)
       {
          case 1:
             currentAverage = AvgMondayBuffer;
             labelColor = coloreAvgMonday;
-            colorindex = 0;
             break;
          case 2:
             currentAverage = AvgTuesdayBuffer;
             labelColor = coloreAvgTuesday;
-            colorindex = 1;
             break;
          case 3:
             currentAverage = AvgWednesdayBuffer;
             labelColor = coloreAvgWednesday;
-            colorindex = 2;
             break;
          case 4:
             currentAverage = AvgThursdayBuffer;
             labelColor = coloreAvgThursday;
-            colorindex = 3;
             break;
          case 5:
             currentAverage = AvgFridayBuffer;
             labelColor = coloreAvgFriday;
-            colorindex = 4;
             break;
          default:
             break;
       }
-
-      ColorAvgDailyBuffer[i] = colorindex;
-      ColorAvgDailyBuffer2[i] = colorindex;
 
       double livelloHighWeek = 0.0;
       double livellolowWeek = 0.0;
