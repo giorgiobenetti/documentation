@@ -186,6 +186,25 @@ void SetDailyWeekdayPlots(const int i, const int dayOfWeek,
    if(dayOfWeek == 5) AvgDailyFridayBuffer[i] = dailyAverage;
 }
 
+double GetAvgWeekdayValue(const int dayOfWeek, const int i)
+{
+   if(dayOfWeek == 1) return AvgDailyMondayBuffer[i];
+   if(dayOfWeek == 2) return AvgDailyTuesdayBuffer[i];
+   if(dayOfWeek == 3) return AvgDailyWednesdayBuffer[i];
+   if(dayOfWeek == 4) return AvgDailyThursdayBuffer[i];
+   if(dayOfWeek == 5) return AvgDailyFridayBuffer[i];
+   return EMPTY_VALUE;
+}
+
+void SetAvgWeekdayValue(const int dayOfWeek, const int i, const double value)
+{
+   if(dayOfWeek == 1) AvgDailyMondayBuffer[i] = value;
+   if(dayOfWeek == 2) AvgDailyTuesdayBuffer[i] = value;
+   if(dayOfWeek == 3) AvgDailyWednesdayBuffer[i] = value;
+   if(dayOfWeek == 4) AvgDailyThursdayBuffer[i] = value;
+   if(dayOfWeek == 5) AvgDailyFridayBuffer[i] = value;
+}
+
 color GetWeekdayColor(const int dayOfWeek)
 {
    if(dayOfWeek == 1) return coloreAvgMonday;
@@ -286,8 +305,8 @@ int OnInit()
    SetIndexLabel(11, "Daily Volatility Average Friday");
    SetIndexBuffer(11, AvgDailyFridayBuffer);
 
-   // Use classic pip logic for 3/5-digit symbols.
-   PIP_SIZE = ((Digits == 3 || Digits == 5) ? Point * 10.0 : Point);
+   // Keep MT5 parity: always Point*10 as in the original source.
+   PIP_SIZE = Point * 10.0;
 
    return(INIT_SUCCEEDED);
 }
@@ -314,6 +333,8 @@ int OnCalculate(const int rates_total,
 
    UpdateIndicatorWindow();
    ClearAllOutputBuffers(rates_total);
+   int dayByBar[];
+   ArrayResize(dayByBar, rates_total);
 
    ArrayResize(VolatilityMonday, 0);
    ArrayResize(VolatilityTuesday, 0);
@@ -334,6 +355,7 @@ int OnCalculate(const int rates_total,
    minimo = low[oldest];
    massimoWeek = high[oldest];
    minimoWeek = low[oldest];
+   dayByBar[oldest] = currentDay;
 
    for(int i = oldest - 1; i >= 0; i--)
    {
@@ -395,6 +417,7 @@ int OnCalculate(const int rates_total,
          default: currentAverage = 0.0; break;
       }
       color labelColor = GetWeekdayColor(currentDay);
+      dayByBar[i] = currentDay;
 
       WeekyRangeBuffer[i] = weeklyRange;
       AvgWeeklyBuffer[i] = avgWeekly;
@@ -470,6 +493,25 @@ int OnCalculate(const int rates_total,
             SendNotification(dailyMessage);
             allarmeDaily = 0;
          }
+      }
+   }
+
+   // Bridge weekday transitions so the colored daily average line
+   // behaves like MT5 DRAW_COLOR_LINE (continuous line with color shifts).
+   for(int i = rates_total - 2; i >= 0; i--)
+   {
+      int olderDay = dayByBar[i + 1];
+      int newerDay = dayByBar[i];
+
+      if(olderDay >= 1 && olderDay <= 5 && newerDay >= 1 && newerDay <= 5 && olderDay != newerDay)
+      {
+         double newerAvg = GetAvgWeekdayValue(newerDay, i);
+         double olderAvg = GetAvgWeekdayValue(olderDay, i + 1);
+
+         if(newerAvg != EMPTY_VALUE)
+            SetAvgWeekdayValue(olderDay, i, newerAvg);
+         if(olderAvg != EMPTY_VALUE)
+            SetAvgWeekdayValue(newerDay, i + 1, olderAvg);
       }
    }
 
