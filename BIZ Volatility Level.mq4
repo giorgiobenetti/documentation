@@ -8,82 +8,58 @@
 #property link      "https://investire.biz/"
 #property version   "1.00"
 #property indicator_chart_window
-#property indicator_buffers 12
+#property indicator_buffers 8
 
-// plot Volatilita' settimanale
+// 0-1: weekly
 #property indicator_label1  "High Weekly Volatility Average"
 #property indicator_type1   DRAW_LINE
 #property indicator_color1  clrBlue
 #property indicator_style1  STYLE_SOLID
 #property indicator_width1  2
 
-// plot Volatilita' settimanale
 #property indicator_label2  "Low Weekly Volatility Average"
 #property indicator_type2   DRAW_LINE
 #property indicator_color2  clrBlue
 #property indicator_style2  STYLE_SOLID
 #property indicator_width2  2
 
-// plot giornalieri colore per giorno settimana (5 high + 5 low)
-#property indicator_label3  "High Daily Monday"
+// 2-4: daily high by weekday group
+#property indicator_label3  "High Daily Mon-Tue"
 #property indicator_type3   DRAW_LINE
 #property indicator_color3  C'255,165,0'
 #property indicator_style3  STYLE_SOLID
 #property indicator_width3  2
 
-#property indicator_label4  "Low Daily Monday"
+#property indicator_label4  "High Daily Wed-Thu"
 #property indicator_type4   DRAW_LINE
-#property indicator_color4  C'255,165,0'
+#property indicator_color4  C'0,255,0'
 #property indicator_style4  STYLE_SOLID
 #property indicator_width4  2
 
-#property indicator_label5  "High Daily Tuesday"
+#property indicator_label5  "High Daily Fri"
 #property indicator_type5   DRAW_LINE
-#property indicator_color5  C'0,204,255'
+#property indicator_color5  C'155,2,255'
 #property indicator_style5  STYLE_SOLID
 #property indicator_width5  2
 
-#property indicator_label6  "Low Daily Tuesday"
+// 5-7: daily low by weekday group
+#property indicator_label6  "Low Daily Mon-Tue"
 #property indicator_type6   DRAW_LINE
-#property indicator_color6  C'0,204,255'
+#property indicator_color6  C'255,0,255'
 #property indicator_style6  STYLE_SOLID
 #property indicator_width6  2
 
-#property indicator_label7  "High Daily Wednesday"
+#property indicator_label7  "Low Daily Wed-Thu"
 #property indicator_type7   DRAW_LINE
-#property indicator_color7  C'0,255,0'
+#property indicator_color7  C'0,204,255'
 #property indicator_style7  STYLE_SOLID
 #property indicator_width7  2
 
-#property indicator_label8  "Low Daily Wednesday"
+#property indicator_label8  "Low Daily Fri"
 #property indicator_type8   DRAW_LINE
-#property indicator_color8  C'0,255,0'
+#property indicator_color8  C'255,165,0'
 #property indicator_style8  STYLE_SOLID
 #property indicator_width8  2
-
-#property indicator_label9  "High Daily Thursday"
-#property indicator_type9   DRAW_LINE
-#property indicator_color9  C'255,0,255'
-#property indicator_style9  STYLE_SOLID
-#property indicator_width9  2
-
-#property indicator_label10 "Low Daily Thursday"
-#property indicator_type10  DRAW_LINE
-#property indicator_color10 C'255,0,255'
-#property indicator_style10 STYLE_SOLID
-#property indicator_width10 2
-
-#property indicator_label11 "High Daily Friday"
-#property indicator_type11  DRAW_LINE
-#property indicator_color11 C'155,2,255'
-#property indicator_style11 STYLE_SOLID
-#property indicator_width11 2
-
-#property indicator_label12 "Low Daily Friday"
-#property indicator_type12  DRAW_LINE
-#property indicator_color12 C'155,2,255'
-#property indicator_style12 STYLE_SOLID
-#property indicator_width12 2
 
 // --- Parametri licenza
 input string allowedServer = "TriveEurope-Live2 Ig"; // Nome del server autorizzato
@@ -105,16 +81,12 @@ input color coloreAvgFriday      = C'155,2,255';      // Friday Range Average
 //--- indicator buffers
 double HighAvgWeeklyBuffer[];
 double LowAvgWeeklyBuffer[];
-double HighAvgDailyMondayBuffer[];
-double LowAvgDailyMondayBuffer[];
-double HighAvgDailyTuesdayBuffer[];
-double LowAvgDailyTuesdayBuffer[];
-double HighAvgDailyWednesdayBuffer[];
-double LowAvgDailyWednesdayBuffer[];
-double HighAvgDailyThursdayBuffer[];
-double LowAvgDailyThursdayBuffer[];
-double HighAvgDailyFridayBuffer[];
-double LowAvgDailyFridayBuffer[];
+double HighDailyMonTueBuffer[];
+double HighDailyWedThuBuffer[];
+double HighDailyFriBuffer[];
+double LowDailyMonTueBuffer[];
+double LowDailyWedThuBuffer[];
+double LowDailyFriBuffer[];
 
 int allarmeWeekly = 0;
 int StatoAllarmeWeekly = 0;
@@ -131,6 +103,9 @@ int  GetNormalizedWeekday(const datetime dayOpenTime);
 void ClearDailyBuffersAt(const int index);
 void SetDailyBuffersAt(const int index, const int dow, const double hi, const double lo);
 color GetWeekdayColor(const int dow);
+void indicatoreScaduto();
+bool ArrowRightPriceCreate(const long chart_ID = 0, const string name = "EtichettaVI", datetime time = 0, double price = 0, const color clr = clrRed);
+void ChangeArrowEmptyPoint(datetime &time, double &price);
 
 //+------------------------------------------------------------------+
 //| License check (date + server)                                    |
@@ -178,45 +153,33 @@ int OnInit()
       return(INIT_SUCCEEDED);
    }
 
-   IndicatorBuffers(12);
+   IndicatorBuffers(8);
    SetIndexBuffer(0, HighAvgWeeklyBuffer, INDICATOR_DATA);
    SetIndexBuffer(1, LowAvgWeeklyBuffer, INDICATOR_DATA);
-   SetIndexBuffer(2, HighAvgDailyMondayBuffer, INDICATOR_DATA);
-   SetIndexBuffer(3, LowAvgDailyMondayBuffer, INDICATOR_DATA);
-   SetIndexBuffer(4, HighAvgDailyTuesdayBuffer, INDICATOR_DATA);
-   SetIndexBuffer(5, LowAvgDailyTuesdayBuffer, INDICATOR_DATA);
-   SetIndexBuffer(6, HighAvgDailyWednesdayBuffer, INDICATOR_DATA);
-   SetIndexBuffer(7, LowAvgDailyWednesdayBuffer, INDICATOR_DATA);
-   SetIndexBuffer(8, HighAvgDailyThursdayBuffer, INDICATOR_DATA);
-   SetIndexBuffer(9, LowAvgDailyThursdayBuffer, INDICATOR_DATA);
-   SetIndexBuffer(10, HighAvgDailyFridayBuffer, INDICATOR_DATA);
-   SetIndexBuffer(11, LowAvgDailyFridayBuffer, INDICATOR_DATA);
+   SetIndexBuffer(2, HighDailyMonTueBuffer, INDICATOR_DATA);
+   SetIndexBuffer(3, HighDailyWedThuBuffer, INDICATOR_DATA);
+   SetIndexBuffer(4, HighDailyFriBuffer, INDICATOR_DATA);
+   SetIndexBuffer(5, LowDailyMonTueBuffer, INDICATOR_DATA);
+   SetIndexBuffer(6, LowDailyWedThuBuffer, INDICATOR_DATA);
+   SetIndexBuffer(7, LowDailyFriBuffer, INDICATOR_DATA);
 
    SetIndexStyle(0, DRAW_LINE, STYLE_SOLID, 2, clrBlue);
    SetIndexStyle(1, DRAW_LINE, STYLE_SOLID, 2, clrBlue);
    SetIndexStyle(2, DRAW_LINE, STYLE_SOLID, 2, coloreAvgMonday);
-   SetIndexStyle(3, DRAW_LINE, STYLE_SOLID, 2, coloreAvgMonday);
-   SetIndexStyle(4, DRAW_LINE, STYLE_SOLID, 2, coloreAvgTuesday);
-   SetIndexStyle(5, DRAW_LINE, STYLE_SOLID, 2, coloreAvgTuesday);
+   SetIndexStyle(3, DRAW_LINE, STYLE_SOLID, 2, coloreAvgWednesday);
+   SetIndexStyle(4, DRAW_LINE, STYLE_SOLID, 2, coloreAvgFriday);
+   SetIndexStyle(5, DRAW_LINE, STYLE_SOLID, 2, coloreAvgMonday);
    SetIndexStyle(6, DRAW_LINE, STYLE_SOLID, 2, coloreAvgWednesday);
-   SetIndexStyle(7, DRAW_LINE, STYLE_SOLID, 2, coloreAvgWednesday);
-   SetIndexStyle(8, DRAW_LINE, STYLE_SOLID, 2, coloreAvgThursday);
-   SetIndexStyle(9, DRAW_LINE, STYLE_SOLID, 2, coloreAvgThursday);
-   SetIndexStyle(10, DRAW_LINE, STYLE_SOLID, 2, coloreAvgFriday);
-   SetIndexStyle(11, DRAW_LINE, STYLE_SOLID, 2, coloreAvgFriday);
+   SetIndexStyle(7, DRAW_LINE, STYLE_SOLID, 2, coloreAvgFriday);
 
    SetIndexLabel(0, "High Weekly Volatility Average");
    SetIndexLabel(1, "Low Weekly Volatility Average");
-   SetIndexLabel(2, "High Daily Monday");
-   SetIndexLabel(3, "Low Daily Monday");
-   SetIndexLabel(4, "High Daily Tuesday");
-   SetIndexLabel(5, "Low Daily Tuesday");
-   SetIndexLabel(6, "High Daily Wednesday");
-   SetIndexLabel(7, "Low Daily Wednesday");
-   SetIndexLabel(8, "High Daily Thursday");
-   SetIndexLabel(9, "Low Daily Thursday");
-   SetIndexLabel(10, "High Daily Friday");
-   SetIndexLabel(11, "Low Daily Friday");
+   SetIndexLabel(2, "High Daily Mon-Tue");
+   SetIndexLabel(3, "High Daily Wed-Thu");
+   SetIndexLabel(4, "High Daily Fri");
+   SetIndexLabel(5, "Low Daily Mon-Tue");
+   SetIndexLabel(6, "Low Daily Wed-Thu");
+   SetIndexLabel(7, "Low Daily Fri");
 
    return(INIT_SUCCEEDED);
 }
@@ -439,30 +402,33 @@ int GetNormalizedWeekday(const datetime dayOpenTime)
 //+--------------------------------------------------------------------------------+
 void ClearDailyBuffersAt(const int index)
 {
-   HighAvgDailyMondayBuffer[index] = EMPTY_VALUE;
-   LowAvgDailyMondayBuffer[index] = EMPTY_VALUE;
-   HighAvgDailyTuesdayBuffer[index] = EMPTY_VALUE;
-   LowAvgDailyTuesdayBuffer[index] = EMPTY_VALUE;
-   HighAvgDailyWednesdayBuffer[index] = EMPTY_VALUE;
-   LowAvgDailyWednesdayBuffer[index] = EMPTY_VALUE;
-   HighAvgDailyThursdayBuffer[index] = EMPTY_VALUE;
-   LowAvgDailyThursdayBuffer[index] = EMPTY_VALUE;
-   HighAvgDailyFridayBuffer[index] = EMPTY_VALUE;
-   LowAvgDailyFridayBuffer[index] = EMPTY_VALUE;
+   HighDailyMonTueBuffer[index] = EMPTY_VALUE;
+   HighDailyWedThuBuffer[index] = EMPTY_VALUE;
+   HighDailyFriBuffer[index] = EMPTY_VALUE;
+   LowDailyMonTueBuffer[index] = EMPTY_VALUE;
+   LowDailyWedThuBuffer[index] = EMPTY_VALUE;
+   LowDailyFriBuffer[index] = EMPTY_VALUE;
 }
 
 //+--------------------------------------------------------------------------------+
-//| Scrive i livelli daily nel buffer colore corretto                               |
+//| Scrive i livelli daily nel buffer gruppo colore                                 |
 //+--------------------------------------------------------------------------------+
 void SetDailyBuffersAt(const int index, const int dow, const double hi, const double lo)
 {
-   switch(dow)
+   if(dow == 1 || dow == 2)
    {
-      case 1: HighAvgDailyMondayBuffer[index] = hi; LowAvgDailyMondayBuffer[index] = lo; break;
-      case 2: HighAvgDailyTuesdayBuffer[index] = hi; LowAvgDailyTuesdayBuffer[index] = lo; break;
-      case 3: HighAvgDailyWednesdayBuffer[index] = hi; LowAvgDailyWednesdayBuffer[index] = lo; break;
-      case 4: HighAvgDailyThursdayBuffer[index] = hi; LowAvgDailyThursdayBuffer[index] = lo; break;
-      case 5: HighAvgDailyFridayBuffer[index] = hi; LowAvgDailyFridayBuffer[index] = lo; break;
+      HighDailyMonTueBuffer[index] = hi;
+      LowDailyMonTueBuffer[index] = lo;
+   }
+   else if(dow == 3 || dow == 4)
+   {
+      HighDailyWedThuBuffer[index] = hi;
+      LowDailyWedThuBuffer[index] = lo;
+   }
+   else if(dow == 5)
+   {
+      HighDailyFriBuffer[index] = hi;
+      LowDailyFriBuffer[index] = lo;
    }
 }
 
