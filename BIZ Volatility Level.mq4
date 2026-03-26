@@ -523,7 +523,7 @@ bool GetDailyProjection(const datetime barTime, const int lookback, double &leve
       if(!GetRangeStatsNoSunday(PERIOD_H1, dayStart, dayEnd, sampleHi, sampleLo, sampleClose))
          continue;
 
-      double r = sampleHi - sampleLo;
+      double r = MathAbs(sampleHi - sampleLo);
       if(r > 0.0)
       {
          sum += r;
@@ -576,7 +576,7 @@ bool GetWeeklyProjection(const datetime barTime, const int lookback, double &lev
       double wh = 0.0, wl = 0.0, wc = 0.0;
       if(!GetWeekStatsNoSunday(s, wh, wl, wc))
          continue;
-      double r = wh - wl;
+      double r = MathAbs(wh - wl);
       if(r > 0.0)
       {
          sum += r;
