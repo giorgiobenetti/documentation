@@ -8,7 +8,7 @@
 #property link      "https://investire.biz/"
 #property version   "1.00"
 #property indicator_chart_window
-#property indicator_buffers 4
+#property indicator_buffers 12
 
 // plot Volatilita' settimanale
 #property indicator_label1  "High Weekly Volatility Average"
@@ -24,28 +24,77 @@
 #property indicator_style2  STYLE_SOLID
 #property indicator_width2  2
 
-// plot Volatilita' giornaliera
-#property indicator_label3  "High Daily Volatility Average"
+// plot giornalieri colore per giorno settimana (5 high + 5 low)
+#property indicator_label3  "High Daily Monday"
 #property indicator_type3   DRAW_LINE
-#property indicator_color3  clrOrange
+#property indicator_color3  C'255,165,0'
 #property indicator_style3  STYLE_SOLID
 #property indicator_width3  2
 
-#property indicator_label4  "Low Daily Volatility Average"
+#property indicator_label4  "Low Daily Monday"
 #property indicator_type4   DRAW_LINE
-#property indicator_color4  clrOrange
+#property indicator_color4  C'255,165,0'
 #property indicator_style4  STYLE_SOLID
 #property indicator_width4  2
+
+#property indicator_label5  "High Daily Tuesday"
+#property indicator_type5   DRAW_LINE
+#property indicator_color5  C'0,204,255'
+#property indicator_style5  STYLE_SOLID
+#property indicator_width5  2
+
+#property indicator_label6  "Low Daily Tuesday"
+#property indicator_type6   DRAW_LINE
+#property indicator_color6  C'0,204,255'
+#property indicator_style6  STYLE_SOLID
+#property indicator_width6  2
+
+#property indicator_label7  "High Daily Wednesday"
+#property indicator_type7   DRAW_LINE
+#property indicator_color7  C'0,255,0'
+#property indicator_style7  STYLE_SOLID
+#property indicator_width7  2
+
+#property indicator_label8  "Low Daily Wednesday"
+#property indicator_type8   DRAW_LINE
+#property indicator_color8  C'0,255,0'
+#property indicator_style8  STYLE_SOLID
+#property indicator_width8  2
+
+#property indicator_label9  "High Daily Thursday"
+#property indicator_type9   DRAW_LINE
+#property indicator_color9  C'255,0,255'
+#property indicator_style9  STYLE_SOLID
+#property indicator_width9  2
+
+#property indicator_label10 "Low Daily Thursday"
+#property indicator_type10  DRAW_LINE
+#property indicator_color10 C'255,0,255'
+#property indicator_style10 STYLE_SOLID
+#property indicator_width10 2
+
+#property indicator_label11 "High Daily Friday"
+#property indicator_type11  DRAW_LINE
+#property indicator_color11 C'155,2,255'
+#property indicator_style11 STYLE_SOLID
+#property indicator_width11 2
+
+#property indicator_label12 "Low Daily Friday"
+#property indicator_type12  DRAW_LINE
+#property indicator_color12 C'155,2,255'
+#property indicator_style12 STYLE_SOLID
+#property indicator_width12 2
 
 // --- Parametri licenza
 input string allowedServer = "TriveEurope-Live2 Ig"; // Nome del server autorizzato
 string supportEmail = "info@investire.biz";          // Email supporto
 datetime expirationDate = D'2026.04.07 00:00';
 
-// Input variable for period to calculate average volatility
+// Input variabili
 input int  periodo               = 10;                // Period
 input bool NotificheSettimanali  = false;             // Weekly Notification
 input bool NotificheGiornaliere  = false;             // Daily Notification
+input bool EscludiDomenica       = true;              // Esclude sessione domenicale dai calcoli
 input color coloreAvgSettimanale = clrBlue;           // Weekly Range Average
 input color coloreAvgMonday      = C'255,165,0';      // Monday Range Average
 input color coloreAvgTuesday     = C'0,204,255';      // Tuesday Range Average
@@ -56,8 +105,16 @@ input color coloreAvgFriday      = C'155,2,255';      // Friday Range Average
 //--- indicator buffers
 double HighAvgWeeklyBuffer[];
 double LowAvgWeeklyBuffer[];
-double HighAvgDailyBuffer[];
-double LowAvgDailyBuffer[];
+double HighAvgDailyMondayBuffer[];
+double LowAvgDailyMondayBuffer[];
+double HighAvgDailyTuesdayBuffer[];
+double LowAvgDailyTuesdayBuffer[];
+double HighAvgDailyWednesdayBuffer[];
+double LowAvgDailyWednesdayBuffer[];
+double HighAvgDailyThursdayBuffer[];
+double LowAvgDailyThursdayBuffer[];
+double HighAvgDailyFridayBuffer[];
+double LowAvgDailyFridayBuffer[];
 
 int allarmeWeekly = 0;
 int StatoAllarmeWeekly = 0;
@@ -67,8 +124,12 @@ datetime lastDailyStart = 0;
 datetime lastWeeklyStart = 0;
 
 void DeleteObjectsByPrefix(const string prefix);
-bool GetDailyProjection(const datetime barTime, const int lookback, double &levelHigh, double &levelLow, color &labelColor, double &avgRange);
+bool GetDailyProjection(const datetime barTime, const int lookback, double &levelHigh, double &levelLow, color &labelColor, double &avgRange, int &weekdayOut);
 bool GetWeeklyProjection(const datetime barTime, const int lookback, double &levelHigh, double &levelLow, double &avgRange);
+bool GetWeekStatsNoSunday(const int weekShift, double &weekHigh, double &weekLow, double &weekClose);
+int  GetNormalizedWeekday(const datetime dayOpenTime);
+void ClearDailyBuffersAt(const int index);
+void SetDailyBuffersAt(const int index, const int dow, const double hi, const double lo);
 color GetWeekdayColor(const int dow);
 
 //+------------------------------------------------------------------+
@@ -117,21 +178,45 @@ int OnInit()
       return(INIT_SUCCEEDED);
    }
 
-   IndicatorBuffers(4);
+   IndicatorBuffers(12);
    SetIndexBuffer(0, HighAvgWeeklyBuffer, INDICATOR_DATA);
    SetIndexBuffer(1, LowAvgWeeklyBuffer, INDICATOR_DATA);
-   SetIndexBuffer(2, HighAvgDailyBuffer, INDICATOR_DATA);
-   SetIndexBuffer(3, LowAvgDailyBuffer, INDICATOR_DATA);
+   SetIndexBuffer(2, HighAvgDailyMondayBuffer, INDICATOR_DATA);
+   SetIndexBuffer(3, LowAvgDailyMondayBuffer, INDICATOR_DATA);
+   SetIndexBuffer(4, HighAvgDailyTuesdayBuffer, INDICATOR_DATA);
+   SetIndexBuffer(5, LowAvgDailyTuesdayBuffer, INDICATOR_DATA);
+   SetIndexBuffer(6, HighAvgDailyWednesdayBuffer, INDICATOR_DATA);
+   SetIndexBuffer(7, LowAvgDailyWednesdayBuffer, INDICATOR_DATA);
+   SetIndexBuffer(8, HighAvgDailyThursdayBuffer, INDICATOR_DATA);
+   SetIndexBuffer(9, LowAvgDailyThursdayBuffer, INDICATOR_DATA);
+   SetIndexBuffer(10, HighAvgDailyFridayBuffer, INDICATOR_DATA);
+   SetIndexBuffer(11, LowAvgDailyFridayBuffer, INDICATOR_DATA);
 
    SetIndexStyle(0, DRAW_LINE, STYLE_SOLID, 2, clrBlue);
    SetIndexStyle(1, DRAW_LINE, STYLE_SOLID, 2, clrBlue);
-   SetIndexStyle(2, DRAW_LINE, STYLE_SOLID, 2, clrOrange);
-   SetIndexStyle(3, DRAW_LINE, STYLE_SOLID, 2, clrOrange);
+   SetIndexStyle(2, DRAW_LINE, STYLE_SOLID, 2, coloreAvgMonday);
+   SetIndexStyle(3, DRAW_LINE, STYLE_SOLID, 2, coloreAvgMonday);
+   SetIndexStyle(4, DRAW_LINE, STYLE_SOLID, 2, coloreAvgTuesday);
+   SetIndexStyle(5, DRAW_LINE, STYLE_SOLID, 2, coloreAvgTuesday);
+   SetIndexStyle(6, DRAW_LINE, STYLE_SOLID, 2, coloreAvgWednesday);
+   SetIndexStyle(7, DRAW_LINE, STYLE_SOLID, 2, coloreAvgWednesday);
+   SetIndexStyle(8, DRAW_LINE, STYLE_SOLID, 2, coloreAvgThursday);
+   SetIndexStyle(9, DRAW_LINE, STYLE_SOLID, 2, coloreAvgThursday);
+   SetIndexStyle(10, DRAW_LINE, STYLE_SOLID, 2, coloreAvgFriday);
+   SetIndexStyle(11, DRAW_LINE, STYLE_SOLID, 2, coloreAvgFriday);
 
    SetIndexLabel(0, "High Weekly Volatility Average");
    SetIndexLabel(1, "Low Weekly Volatility Average");
-   SetIndexLabel(2, "High Daily Volatility Average");
-   SetIndexLabel(3, "Low Daily Volatility Average");
+   SetIndexLabel(2, "High Daily Monday");
+   SetIndexLabel(3, "Low Daily Monday");
+   SetIndexLabel(4, "High Daily Tuesday");
+   SetIndexLabel(5, "Low Daily Tuesday");
+   SetIndexLabel(6, "High Daily Wednesday");
+   SetIndexLabel(7, "Low Daily Wednesday");
+   SetIndexLabel(8, "High Daily Thursday");
+   SetIndexLabel(9, "Low Daily Thursday");
+   SetIndexLabel(10, "High Daily Friday");
+   SetIndexLabel(11, "Low Daily Friday");
 
    return(INIT_SUCCEEDED);
 }
@@ -177,17 +262,12 @@ int OnCalculate(const int rates_total,
       color dailyColor = clrOrange;
       double avgDailyRange = 0.0;
       double avgWeeklyRange = 0.0;
+      int dailyDow = 0;
 
-      if(GetDailyProjection(time[i], periodo, dailyHigh, dailyLow, dailyColor, avgDailyRange))
-      {
-         HighAvgDailyBuffer[i] = dailyHigh;
-         LowAvgDailyBuffer[i] = dailyLow;
-      }
-      else
-      {
-         HighAvgDailyBuffer[i] = EMPTY_VALUE;
-         LowAvgDailyBuffer[i] = EMPTY_VALUE;
-      }
+      ClearDailyBuffersAt(i);
+
+      if(GetDailyProjection(time[i], periodo, dailyHigh, dailyLow, dailyColor, avgDailyRange, dailyDow))
+         SetDailyBuffersAt(i, dailyDow, dailyHigh, dailyLow);
 
       if(GetWeeklyProjection(time[i], periodo, weeklyHigh, weeklyLow, avgWeeklyRange))
       {
@@ -209,8 +289,9 @@ int OnCalculate(const int rates_total,
    double lastWeeklyLow = EMPTY_VALUE;
    double avgDailyLast = 0.0;
    double avgWeeklyLast = 0.0;
+   int lastDailyDow = 0;
 
-   bool hasDaily = GetDailyProjection(time[lastIndex], periodo, lastDailyHigh, lastDailyLow, labelColor, avgDailyLast);
+   bool hasDaily = GetDailyProjection(time[lastIndex], periodo, lastDailyHigh, lastDailyLow, labelColor, avgDailyLast, lastDailyDow);
    bool hasWeekly = GetWeeklyProjection(time[lastIndex], periodo, lastWeeklyHigh, lastWeeklyLow, avgWeeklyLast);
 
    if(hasWeekly)
@@ -292,7 +373,6 @@ int OnCalculate(const int rates_total,
    }
 
    ChartRedraw();
-
    return(rates_total);
 }
 
@@ -328,23 +408,6 @@ void indicatoreScaduto()
 }
 
 //+--------------------------------------------------------------------------------+
-//| Function to calculate average of an array                                      |
-//+--------------------------------------------------------------------------------+
-double ArrayAverage(double &array[], int count)
-{
-   if(count <= 0 || ArraySize(array) == 0)
-      return(0.0);
-
-   count = MathMin(count, ArraySize(array));
-   double sum = 0.0;
-
-   for(int i = ArraySize(array) - count; i < ArraySize(array); i++)
-      sum += array[i];
-
-   return(sum / count);
-}
-
-//+--------------------------------------------------------------------------------+
 //| Colore linea/etichetta per giorno settimana                                    |
 //+--------------------------------------------------------------------------------+
 color GetWeekdayColor(const int dow)
@@ -361,36 +424,93 @@ color GetWeekdayColor(const int dow)
 }
 
 //+--------------------------------------------------------------------------------+
-//| Proiezione giornaliera: media ultimi N stesso giorno (lun-ven)                 |
-//| proiettata dal close del giorno precedente                                      |
+//| Normalizza il giorno: domenica -> lunedi (se esclusa)                          |
 //+--------------------------------------------------------------------------------+
-bool GetDailyProjection(const datetime barTime, const int lookback, double &levelHigh, double &levelLow, color &labelColor, double &avgRange)
+int GetNormalizedWeekday(const datetime dayOpenTime)
+{
+   int dow = TimeDayOfWeek(dayOpenTime); // 0=dom ... 6=sab
+   if(EscludiDomenica && dow == 0)
+      return(1);
+   return(dow);
+}
+
+//+--------------------------------------------------------------------------------+
+//| Pulisce i buffer daily alla barra index                                         |
+//+--------------------------------------------------------------------------------+
+void ClearDailyBuffersAt(const int index)
+{
+   HighAvgDailyMondayBuffer[index] = EMPTY_VALUE;
+   LowAvgDailyMondayBuffer[index] = EMPTY_VALUE;
+   HighAvgDailyTuesdayBuffer[index] = EMPTY_VALUE;
+   LowAvgDailyTuesdayBuffer[index] = EMPTY_VALUE;
+   HighAvgDailyWednesdayBuffer[index] = EMPTY_VALUE;
+   LowAvgDailyWednesdayBuffer[index] = EMPTY_VALUE;
+   HighAvgDailyThursdayBuffer[index] = EMPTY_VALUE;
+   LowAvgDailyThursdayBuffer[index] = EMPTY_VALUE;
+   HighAvgDailyFridayBuffer[index] = EMPTY_VALUE;
+   LowAvgDailyFridayBuffer[index] = EMPTY_VALUE;
+}
+
+//+--------------------------------------------------------------------------------+
+//| Scrive i livelli daily nel buffer colore corretto                               |
+//+--------------------------------------------------------------------------------+
+void SetDailyBuffersAt(const int index, const int dow, const double hi, const double lo)
+{
+   switch(dow)
+   {
+      case 1: HighAvgDailyMondayBuffer[index] = hi; LowAvgDailyMondayBuffer[index] = lo; break;
+      case 2: HighAvgDailyTuesdayBuffer[index] = hi; LowAvgDailyTuesdayBuffer[index] = lo; break;
+      case 3: HighAvgDailyWednesdayBuffer[index] = hi; LowAvgDailyWednesdayBuffer[index] = lo; break;
+      case 4: HighAvgDailyThursdayBuffer[index] = hi; LowAvgDailyThursdayBuffer[index] = lo; break;
+      case 5: HighAvgDailyFridayBuffer[index] = hi; LowAvgDailyFridayBuffer[index] = lo; break;
+   }
+}
+
+//+--------------------------------------------------------------------------------+
+//| Proiezione giornaliera: media ultimi N stesso giorno (lun-ven)                 |
+//| proiettata dal close del giorno precedente, escludendo domenica                |
+//+--------------------------------------------------------------------------------+
+bool GetDailyProjection(const datetime barTime, const int lookback, double &levelHigh, double &levelLow, color &labelColor, double &avgRange, int &weekdayOut)
 {
    int dayShift = iBarShift(Symbol(), PERIOD_D1, barTime, false);
    if(dayShift < 0)
       return(false);
 
    datetime dayOpenTime = iTime(Symbol(), PERIOD_D1, dayShift);
-   int dayOfWeek = TimeDayOfWeek(dayOpenTime);
+   int dayOfWeek = GetNormalizedWeekday(dayOpenTime);
+   weekdayOut = dayOfWeek;
    labelColor = GetWeekdayColor(dayOfWeek);
    if(dayOfWeek < 1 || dayOfWeek > 5)
       return(false);
 
-   double baseClose = iClose(Symbol(), PERIOD_D1, dayShift + 1); // close giorno precedente
+   // Base close: cerca il close dell'ultimo giorno valido precedente (no domenica)
+   double baseClose = 0.0;
+   int d1Bars = iBars(Symbol(), PERIOD_D1);
+   for(int s = dayShift + 1; s < d1Bars; s++)
+   {
+      datetime t = iTime(Symbol(), PERIOD_D1, s);
+      int dow = TimeDayOfWeek(t);
+      if(EscludiDomenica && dow == 0)
+         continue;
+      baseClose = iClose(Symbol(), PERIOD_D1, s);
+      if(baseClose > 0.0)
+         break;
+   }
    if(baseClose <= 0.0)
       return(false);
 
-   int d1Bars = iBars(Symbol(), PERIOD_D1);
    double sum = 0.0;
    int count = 0;
-
-   for(int s = dayShift + 1; s < d1Bars && count < lookback; s++)
+   for(int s2 = dayShift + 1; s2 < d1Bars && count < lookback; s2++)
    {
-      datetime t = iTime(Symbol(), PERIOD_D1, s);
-      if(TimeDayOfWeek(t) != dayOfWeek)
+      datetime t2 = iTime(Symbol(), PERIOD_D1, s2);
+      int dow2 = GetNormalizedWeekday(t2);
+      if(dow2 != dayOfWeek)
+         continue;
+      if(EscludiDomenica && TimeDayOfWeek(t2) == 0)
          continue;
 
-      double r = iHigh(Symbol(), PERIOD_D1, s) - iLow(Symbol(), PERIOD_D1, s);
+      double r = iHigh(Symbol(), PERIOD_D1, s2) - iLow(Symbol(), PERIOD_D1, s2);
       if(r > 0.0)
       {
          sum += r;
@@ -408,8 +528,59 @@ bool GetDailyProjection(const datetime barTime, const int lookback, double &leve
 }
 
 //+--------------------------------------------------------------------------------+
+//| Aggrega statistiche settimana ignorando la domenica                             |
+//+--------------------------------------------------------------------------------+
+bool GetWeekStatsNoSunday(const int weekShift, double &weekHigh, double &weekLow, double &weekClose)
+{
+   datetime wOpen = iTime(Symbol(), PERIOD_W1, weekShift);
+   if(wOpen <= 0)
+      return(false);
+   datetime wEnd = wOpen + 7 * 24 * 60 * 60;
+
+   int h4Bars = iBars(Symbol(), PERIOD_H4);
+   bool found = false;
+   double hi = -DBL_MAX;
+   double lo = DBL_MAX;
+   datetime lastBarTime = 0;
+   double lastBarClose = 0.0;
+
+   for(int i = 0; i < h4Bars; i++)
+   {
+      datetime bt = iTime(Symbol(), PERIOD_H4, i);
+      if(bt < wOpen)
+         break;
+      if(bt >= wEnd)
+         continue;
+
+      int dow = TimeDayOfWeek(bt);
+      if(EscludiDomenica && dow == 0)
+         continue;
+
+      double bh = iHigh(Symbol(), PERIOD_H4, i);
+      double bl = iLow(Symbol(), PERIOD_H4, i);
+      if(bh > hi) hi = bh;
+      if(bl < lo) lo = bl;
+
+      if(bt > lastBarTime)
+      {
+         lastBarTime = bt;
+         lastBarClose = iClose(Symbol(), PERIOD_H4, i);
+      }
+      found = true;
+   }
+
+   if(!found || hi <= -DBL_MAX / 2 || lo >= DBL_MAX / 2)
+      return(false);
+
+   weekHigh = hi;
+   weekLow = lo;
+   weekClose = lastBarClose;
+   return(weekClose > 0.0);
+}
+
+//+--------------------------------------------------------------------------------+
 //| Proiezione settimanale: media ultimi N range settimanali                       |
-//| proiettata dal close della settimana precedente                                |
+//| proiettata dal close della settimana precedente (domenica esclusa)             |
 //+--------------------------------------------------------------------------------+
 bool GetWeeklyProjection(const datetime barTime, const int lookback, double &levelHigh, double &levelLow, double &avgRange)
 {
@@ -417,17 +588,19 @@ bool GetWeeklyProjection(const datetime barTime, const int lookback, double &lev
    if(weekShift < 0)
       return(false);
 
-   double baseClose = iClose(Symbol(), PERIOD_W1, weekShift + 1); // close settimana precedente
-   if(baseClose <= 0.0)
+   double baseHi = 0.0, baseLo = 0.0, baseClose = 0.0;
+   if(!GetWeekStatsNoSunday(weekShift + 1, baseHi, baseLo, baseClose))
       return(false);
 
    int w1Bars = iBars(Symbol(), PERIOD_W1);
    double sum = 0.0;
    int count = 0;
-
    for(int s = weekShift + 1; s < w1Bars && count < lookback; s++)
    {
-      double r = iHigh(Symbol(), PERIOD_W1, s) - iLow(Symbol(), PERIOD_W1, s);
+      double wh = 0.0, wl = 0.0, wc = 0.0;
+      if(!GetWeekStatsNoSunday(s, wh, wl, wc))
+         continue;
+      double r = wh - wl;
       if(r > 0.0)
       {
          sum += r;
