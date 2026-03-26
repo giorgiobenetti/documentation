@@ -490,7 +490,7 @@ bool GetDailyProjection(const datetime barTime, const int lookback, double &leve
    if(dayOfWeek < 1 || dayOfWeek > 5)
       return(false);
 
-   // Base close: cerca il close dell'ultimo giorno valido precedente (no domenica)
+   // Base close: close reale dell'ultimo giorno valido precedente (su H1, no domenica)
    double baseClose = 0.0;
    int d1Bars = iBars(Symbol(), PERIOD_D1);
    for(int s = dayShift + 1; s < d1Bars; s++)
@@ -499,9 +499,26 @@ bool GetDailyProjection(const datetime barTime, const int lookback, double &leve
       int dow = TimeDayOfWeek(t);
       if(EscludiDomenica && dow == 0)
          continue;
-      baseClose = iClose(Symbol(), PERIOD_D1, s);
-      if(baseClose > 0.0)
+
+      datetime prevDayStart = t;
+      datetime prevDayEnd = (s > 0 ? iTime(Symbol(), PERIOD_D1, s - 1) : prevDayStart + 24 * 60 * 60);
+      if(prevDayEnd <= prevDayStart)
+         continue;
+
+      double tmpHi = 0.0, tmpLo = 0.0, tmpClose = 0.0;
+      if(GetRangeStatsNoSunday(PERIOD_H1, prevDayStart, prevDayEnd, tmpHi, tmpLo, tmpClose) && tmpClose > 0.0)
+      {
+         baseClose = tmpClose;
          break;
+      }
+
+      // Fallback robusto: close D1 se non ci sono abbastanza barre H1
+      double closeD1 = iClose(Symbol(), PERIOD_D1, s);
+      if(closeD1 > 0.0)
+      {
+         baseClose = closeD1;
+         break;
+      }
    }
    if(baseClose <= 0.0)
       return(false);
