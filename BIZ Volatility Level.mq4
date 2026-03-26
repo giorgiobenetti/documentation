@@ -69,6 +69,7 @@ datetime expirationDate = D'2026.04.07 00:00';
 // Input variabili
 input int  periodo               = 10;                // Period
 input int  MaxBarsDaCalcolare    = 2500;              // Limite barre per stabilita' performance
+input int  MaxGiorniDailyOggetti = 120;               // Giorni da disegnare come linee daily
 input bool NotificheSettimanali  = false;             // Weekly Notification
 input bool NotificheGiornaliere  = false;             // Daily Notification
 input bool EscludiDomenica       = true;              // Esclude sessione domenicale dai calcoli
@@ -95,15 +96,18 @@ int allarmeDaily = 0;
 int StatoAllarmeDaily = 0;
 datetime lastDailyStart = 0;
 datetime lastWeeklyStart = 0;
+datetime lastDailyObjectsRefresh = 0;
 
 void DeleteObjectsByPrefix(const string prefix);
 bool GetDailyProjection(const datetime barTime, const int lookback, double &levelHigh, double &levelLow, color &labelColor, double &avgRange, int &weekdayOut);
 bool GetWeeklyProjection(const datetime barTime, const int lookback, double &levelHigh, double &levelLow, double &avgRange);
 bool GetWeekStatsNoSunday(const int weekShift, double &weekHigh, double &weekLow, double &weekClose);
+bool GetRangeStatsNoSunday(const ENUM_TIMEFRAMES tf, const datetime windowStart, const datetime windowEnd, double &rangeHigh, double &rangeLow, double &lastClose);
 int  GetNormalizedWeekday(const datetime dayOpenTime);
-void ClearDailyBuffersAt(const int index);
-void SetDailyBuffersAt(const int index, const int dow, const double hi, const double lo);
+void DrawDailySegmentsAsObjects(const datetime &time[], const int rates_total);
 void ResetAllBuffers();
+void DrawDailySegment(const datetime tStart, const datetime tEnd, const double hi, const double lo, const int dow);
+void DeleteDailySegments();
 color GetWeekdayColor(const int dow);
 void indicatoreScaduto();
 bool ArrowRightPriceCreate(const long chart_ID = 0, const string name = "EtichettaVI", datetime time = 0, double price = 0, const color clr = clrRed);
@@ -167,12 +171,13 @@ int OnInit()
 
    SetIndexStyle(0, DRAW_LINE, STYLE_SOLID, 2, clrBlue);
    SetIndexStyle(1, DRAW_LINE, STYLE_SOLID, 2, clrBlue);
-   SetIndexStyle(2, DRAW_LINE, STYLE_SOLID, 2, coloreAvgMonday);
-   SetIndexStyle(3, DRAW_LINE, STYLE_SOLID, 2, coloreAvgWednesday);
-   SetIndexStyle(4, DRAW_LINE, STYLE_SOLID, 2, coloreAvgFriday);
-   SetIndexStyle(5, DRAW_LINE, STYLE_SOLID, 2, coloreAvgMonday);
-   SetIndexStyle(6, DRAW_LINE, STYLE_SOLID, 2, coloreAvgWednesday);
-   SetIndexStyle(7, DRAW_LINE, STYLE_SOLID, 2, coloreAvgFriday);
+   // Daily lines are rendered as chart objects for true weekday colors.
+   SetIndexStyle(2, DRAW_NONE);
+   SetIndexStyle(3, DRAW_NONE);
+   SetIndexStyle(4, DRAW_NONE);
+   SetIndexStyle(5, DRAW_NONE);
+   SetIndexStyle(6, DRAW_NONE);
+   SetIndexStyle(7, DRAW_NONE);
 
    SetIndexLabel(0, "High Weekly Volatility Average");
    SetIndexLabel(1, "Low Weekly Volatility Average");
@@ -202,6 +207,7 @@ void OnDeinit(const int reason)
 {
    ObjectDelete(0, "BIZExpiredIndicatorText");
    ObjectDelete(0, "BIZExpiredIndicatorText2");
+   DeleteDailySegments();
    DeleteObjectsByPrefix("prezziVI");
 }
 
@@ -242,14 +248,6 @@ int OnCalculate(const int rates_total,
    if(prev_calculated == 0)
       ResetAllBuffers();
 
-   int lastDayShift = -1;
-   bool dayReady = false;
-   double cachedDailyHigh = EMPTY_VALUE;
-   double cachedDailyLow = EMPTY_VALUE;
-   color cachedDailyColor = clrOrange;
-   double cachedAvgDaily = 0.0;
-   int cachedDailyDow = 0;
-
    int lastWeekShift = -1;
    bool weekReady = false;
    double cachedWeeklyHigh = EMPTY_VALUE;
@@ -258,21 +256,7 @@ int OnCalculate(const int rates_total,
 
    for(int i = begin; i != end; i += step)
    {
-      int dayShift = iBarShift(Symbol(), PERIOD_D1, time[i], false);
       int weekShift = iBarShift(Symbol(), PERIOD_W1, time[i], false);
-
-      ClearDailyBuffersAt(i);
-
-      if(dayShift >= 0)
-      {
-         if(dayShift != lastDayShift)
-         {
-            lastDayShift = dayShift;
-            dayReady = GetDailyProjection(time[i], lookback, cachedDailyHigh, cachedDailyLow, cachedDailyColor, cachedAvgDaily, cachedDailyDow);
-         }
-         if(dayReady)
-            SetDailyBuffersAt(i, cachedDailyDow, cachedDailyHigh, cachedDailyLow);
-      }
 
       if(weekShift >= 0)
       {
@@ -295,6 +279,13 @@ int OnCalculate(const int rates_total,
    }
 
    int lastIndex = seriesMode ? 0 : rates_total - 1;
+
+   if(prev_calculated == 0 || lastDailyObjectsRefresh != time[lastIndex])
+   {
+      DrawDailySegmentsAsObjects(time, rates_total);
+      lastDailyObjectsRefresh = time[lastIndex];
+   }
+
    color labelColor = clrOrange;
    double lastDailyHigh = EMPTY_VALUE;
    double lastDailyLow = EMPTY_VALUE;
@@ -526,7 +517,13 @@ bool GetDailyProjection(const datetime barTime, const int lookback, double &leve
       if(EscludiDomenica && TimeDayOfWeek(t2) == 0)
          continue;
 
-      double r = iHigh(Symbol(), PERIOD_D1, s2) - iLow(Symbol(), PERIOD_D1, s2);
+      datetime dayStart = iTime(Symbol(), PERIOD_D1, s2);
+      datetime dayEnd = (s2 > 0 ? iTime(Symbol(), PERIOD_D1, s2 - 1) : dayStart + 24 * 60 * 60);
+      double sampleHi = 0.0, sampleLo = 0.0, sampleClose = 0.0;
+      if(!GetRangeStatsNoSunday(PERIOD_H1, dayStart, dayEnd, sampleHi, sampleLo, sampleClose))
+         continue;
+
+      double r = sampleHi - sampleLo;
       if(r > 0.0)
       {
          sum += r;
@@ -551,58 +548,10 @@ bool GetWeekStatsNoSunday(const int weekShift, double &weekHigh, double &weekLow
    datetime wOpen = iTime(Symbol(), PERIOD_W1, weekShift);
    if(wOpen <= 0)
       return(false);
-   datetime wEnd = wOpen + 7 * 24 * 60 * 60;
-
-   // D1 e' molto piu' leggero di H4 e stabile in fase di caricamento storico.
-   int newestShift = iBarShift(Symbol(), PERIOD_D1, wEnd - 1, false);
-   int oldestShift = iBarShift(Symbol(), PERIOD_D1, wOpen, false);
-   if(newestShift < 0 || oldestShift < 0)
+   datetime wEnd = (weekShift > 0 ? iTime(Symbol(), PERIOD_W1, weekShift - 1) : wOpen + 7 * 24 * 60 * 60);
+   if(wEnd <= wOpen)
       return(false);
-   if(newestShift > oldestShift)
-   {
-      int tmp = newestShift;
-      newestShift = oldestShift;
-      oldestShift = tmp;
-   }
-
-   bool found = false;
-   double hi = -DBL_MAX;
-   double lo = DBL_MAX;
-   datetime lastBarTime = 0;
-   double lastBarClose = 0.0;
-
-   for(int i = newestShift; i <= oldestShift; i++)
-   {
-      datetime bt = iTime(Symbol(), PERIOD_D1, i);
-      if(bt < wOpen)
-         continue;
-      if(bt >= wEnd)
-         continue;
-
-      int dow = TimeDayOfWeek(bt);
-      if(EscludiDomenica && dow == 0)
-         continue;
-
-      double bh = iHigh(Symbol(), PERIOD_D1, i);
-      double bl = iLow(Symbol(), PERIOD_D1, i);
-      if(bh > hi) hi = bh;
-      if(bl < lo) lo = bl;
-
-      if(bt > lastBarTime)
-      {
-         lastBarTime = bt;
-         lastBarClose = iClose(Symbol(), PERIOD_D1, i);
-      }
-      found = true;
-   }
-
-   if(!found || hi <= -DBL_MAX / 2 || lo >= DBL_MAX / 2)
-      return(false);
-
-   weekHigh = hi;
-   weekLow = lo;
-   weekClose = lastBarClose;
-   return(weekClose > 0.0);
+   return(GetRangeStatsNoSunday(PERIOD_H1, wOpen, wEnd, weekHigh, weekLow, weekClose));
 }
 
 //+--------------------------------------------------------------------------------+
@@ -644,6 +593,61 @@ bool GetWeeklyProjection(const datetime barTime, const int lookback, double &lev
    return(true);
 }
 
+//+--------------------------------------------------------------------------------+
+//| Range/close in finestra temporale ignorando eventuale domenica                 |
+//+--------------------------------------------------------------------------------+
+bool GetRangeStatsNoSunday(const ENUM_TIMEFRAMES tf, const datetime windowStart, const datetime windowEnd, double &rangeHigh, double &rangeLow, double &lastClose)
+{
+   if(windowStart <= 0 || windowEnd <= windowStart)
+      return(false);
+
+   int newestShift = iBarShift(Symbol(), tf, windowEnd - 1, false);
+   int oldestShift = iBarShift(Symbol(), tf, windowStart, false);
+   if(newestShift < 0 || oldestShift < 0)
+      return(false);
+   if(newestShift > oldestShift)
+   {
+      int tmp = newestShift;
+      newestShift = oldestShift;
+      oldestShift = tmp;
+   }
+
+   bool found = false;
+   rangeHigh = -DBL_MAX;
+   rangeLow = DBL_MAX;
+   datetime latestBarTime = 0;
+   lastClose = 0.0;
+
+   for(int i = newestShift; i <= oldestShift; i++)
+   {
+      datetime bt = iTime(Symbol(), tf, i);
+      if(bt < windowStart || bt >= windowEnd)
+         continue;
+
+      if(EscludiDomenica && TimeDayOfWeek(bt) == 0)
+         continue;
+
+      double bh = iHigh(Symbol(), tf, i);
+      double bl = iLow(Symbol(), tf, i);
+      if(bh > rangeHigh)
+         rangeHigh = bh;
+      if(bl < rangeLow)
+         rangeLow = bl;
+
+      if(bt >= latestBarTime)
+      {
+         latestBarTime = bt;
+         lastClose = iClose(Symbol(), tf, i);
+      }
+      found = true;
+   }
+
+   if(!found || rangeHigh <= -DBL_MAX / 2 || rangeLow >= DBL_MAX / 2 || lastClose <= 0.0)
+      return(false);
+
+   return(true);
+}
+
 void ResetAllBuffers()
 {
    ArrayInitialize(HighAvgWeeklyBuffer, EMPTY_VALUE);
@@ -654,6 +658,93 @@ void ResetAllBuffers()
    ArrayInitialize(LowDailyMonTueBuffer, EMPTY_VALUE);
    ArrayInitialize(LowDailyWedThuBuffer, EMPTY_VALUE);
    ArrayInitialize(LowDailyFriBuffer, EMPTY_VALUE);
+}
+
+//+--------------------------------------------------------------------------------+
+//| Disegna segmenti daily come oggetti (colori esatti lun-mar-mer-gio-ven)       |
+//+--------------------------------------------------------------------------------+
+void DrawDailySegmentsAsObjects(const datetime &time[], const int rates_total)
+{
+   DeleteDailySegments();
+
+   int lookback = MathMax(1, periodo);
+   if(lookback > 50)
+      lookback = 50;
+
+   int totalD1 = iBars(Symbol(), PERIOD_D1);
+   if(totalD1 <= 1)
+      return;
+
+   // Disegna un numero limitato di giorni per stabilita' (sufficiente anche in zoom out)
+   int daysToDraw = MathMin(totalD1 - 1, MathMax(lookback * 4, 80));
+   for(int shift = daysToDraw; shift >= 0; shift--)
+   {
+      datetime dayStart = iTime(Symbol(), PERIOD_D1, shift);
+      if(dayStart <= 0)
+         continue;
+
+      if(EscludiDomenica && TimeDayOfWeek(dayStart) == 0)
+         continue;
+
+      datetime dayEnd = (shift > 0 ? iTime(Symbol(), PERIOD_D1, shift - 1) : dayStart + 24 * 60 * 60);
+      if(dayEnd <= dayStart)
+         continue;
+
+      double hi = 0.0, lo = 0.0, avg = 0.0;
+      color lineColor = clrOrange;
+      int dow = 0;
+      if(!GetDailyProjection(dayStart + 60, lookback, hi, lo, lineColor, avg, dow))
+         continue;
+
+      DrawDailySegment(dayStart, dayEnd, hi, lo, dow);
+   }
+}
+
+//+--------------------------------------------------------------------------------+
+//| Disegna 2 segmenti (high/low) per un giorno                                    |
+//+--------------------------------------------------------------------------------+
+void DrawDailySegment(const datetime tStart, const datetime tEnd, const double hi, const double lo, const int dow)
+{
+   color c = GetWeekdayColor(dow);
+   string suffix = IntegerToString((int)tStart);
+   string nameH = "prezziVIDailySegH_" + suffix;
+   string nameL = "prezziVIDailySegL_" + suffix;
+
+   if(!ObjectCreate(0, nameH, OBJ_TREND, 0, tStart, hi, tEnd, hi))
+      ObjectMove(0, nameH, 0, tStart, hi);
+   ObjectMove(0, nameH, 1, tEnd, hi);
+   ObjectSetInteger(0, nameH, OBJPROP_COLOR, c);
+   ObjectSetInteger(0, nameH, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, nameH, OBJPROP_STYLE, STYLE_SOLID);
+   ObjectSetInteger(0, nameH, OBJPROP_RAY, false);
+   ObjectSetInteger(0, nameH, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, nameH, OBJPROP_SELECTED, false);
+   ObjectSetInteger(0, nameH, OBJPROP_HIDDEN, true);
+
+   if(!ObjectCreate(0, nameL, OBJ_TREND, 0, tStart, lo, tEnd, lo))
+      ObjectMove(0, nameL, 0, tStart, lo);
+   ObjectMove(0, nameL, 1, tEnd, lo);
+   ObjectSetInteger(0, nameL, OBJPROP_COLOR, c);
+   ObjectSetInteger(0, nameL, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, nameL, OBJPROP_STYLE, STYLE_SOLID);
+   ObjectSetInteger(0, nameL, OBJPROP_RAY, false);
+   ObjectSetInteger(0, nameL, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, nameL, OBJPROP_SELECTED, false);
+   ObjectSetInteger(0, nameL, OBJPROP_HIDDEN, true);
+}
+
+//+--------------------------------------------------------------------------------+
+//| Cancella tutti i segmenti daily creati da questo indicatore                    |
+//+--------------------------------------------------------------------------------+
+void DeleteDailySegments()
+{
+   int total = ObjectsTotal();
+   for(int i = total - 1; i >= 0; i--)
+   {
+      string name = ObjectName(i);
+      if(StringFind(name, "prezziVIDailySegH_", 0) == 0 || StringFind(name, "prezziVIDailySegL_", 0) == 0)
+         ObjectDelete(name);
+   }
 }
 
 //+--------------------------------------------------------------------------------+
