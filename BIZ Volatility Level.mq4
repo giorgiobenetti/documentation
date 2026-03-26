@@ -68,6 +68,7 @@ datetime expirationDate = D'2026.04.07 00:00';
 
 // Input variabili
 input int  periodo               = 10;                // Period
+input int  MaxBarsDaCalcolare    = 2500;              // Limite barre per stabilita' performance
 input bool NotificheSettimanali  = false;             // Weekly Notification
 input bool NotificheGiornaliere  = false;             // Daily Notification
 input bool EscludiDomenica       = true;              // Esclude sessione domenicale dai calcoli
@@ -102,6 +103,7 @@ bool GetWeekStatsNoSunday(const int weekShift, double &weekHigh, double &weekLow
 int  GetNormalizedWeekday(const datetime dayOpenTime);
 void ClearDailyBuffersAt(const int index);
 void SetDailyBuffersAt(const int index, const int dow, const double hi, const double lo);
+void ResetAllBuffers();
 color GetWeekdayColor(const int dow);
 void indicatoreScaduto();
 bool ArrowRightPriceCreate(const long chart_ID = 0, const string name = "EtichettaVI", datetime time = 0, double price = 0, const color clr = clrRed);
@@ -181,6 +183,15 @@ int OnInit()
    SetIndexLabel(6, "Low Daily Wed-Thu");
    SetIndexLabel(7, "Low Daily Fri");
 
+   SetIndexEmptyValue(0, EMPTY_VALUE);
+   SetIndexEmptyValue(1, EMPTY_VALUE);
+   SetIndexEmptyValue(2, EMPTY_VALUE);
+   SetIndexEmptyValue(3, EMPTY_VALUE);
+   SetIndexEmptyValue(4, EMPTY_VALUE);
+   SetIndexEmptyValue(5, EMPTY_VALUE);
+   SetIndexEmptyValue(6, EMPTY_VALUE);
+   SetIndexEmptyValue(7, EMPTY_VALUE);
+
    return(INIT_SUCCEEDED);
 }
 
@@ -211,36 +222,75 @@ int OnCalculate(const int rates_total,
    if(rates_total <= 0)
       return(0);
 
+   int lookback = MathMax(1, periodo);
+   if(lookback > 50)
+      lookback = 50;
+
+   int cappedBars = MathMax(200, MaxBarsDaCalcolare);
+   if(cappedBars > 10000)
+      cappedBars = 10000;
+   int barsToCalc = cappedBars;
+   if(barsToCalc > rates_total)
+      barsToCalc = rates_total;
+
    bool seriesMode = (time[0] > time[rates_total - 1]);
-   int begin = seriesMode ? rates_total - 1 : 0;
+   int begin = seriesMode ? barsToCalc - 1 : rates_total - barsToCalc;
    int end = seriesMode ? -1 : rates_total;
    int step = seriesMode ? -1 : 1;
 
+   // Primo caricamento: svuota tutti i buffer per evitare artefatti grafici
+   if(prev_calculated == 0)
+      ResetAllBuffers();
+
+   int lastDayShift = -1;
+   bool dayReady = false;
+   double cachedDailyHigh = EMPTY_VALUE;
+   double cachedDailyLow = EMPTY_VALUE;
+   color cachedDailyColor = clrOrange;
+   double cachedAvgDaily = 0.0;
+   int cachedDailyDow = 0;
+
+   int lastWeekShift = -1;
+   bool weekReady = false;
+   double cachedWeeklyHigh = EMPTY_VALUE;
+   double cachedWeeklyLow = EMPTY_VALUE;
+   double cachedAvgWeekly = 0.0;
+
    for(int i = begin; i != end; i += step)
    {
-      double dailyHigh = EMPTY_VALUE;
-      double dailyLow = EMPTY_VALUE;
-      double weeklyHigh = EMPTY_VALUE;
-      double weeklyLow = EMPTY_VALUE;
-      color dailyColor = clrOrange;
-      double avgDailyRange = 0.0;
-      double avgWeeklyRange = 0.0;
-      int dailyDow = 0;
+      int dayShift = iBarShift(Symbol(), PERIOD_D1, time[i], false);
+      int weekShift = iBarShift(Symbol(), PERIOD_W1, time[i], false);
 
       ClearDailyBuffersAt(i);
 
-      if(GetDailyProjection(time[i], periodo, dailyHigh, dailyLow, dailyColor, avgDailyRange, dailyDow))
-         SetDailyBuffersAt(i, dailyDow, dailyHigh, dailyLow);
-
-      if(GetWeeklyProjection(time[i], periodo, weeklyHigh, weeklyLow, avgWeeklyRange))
+      if(dayShift >= 0)
       {
-         HighAvgWeeklyBuffer[i] = weeklyHigh;
-         LowAvgWeeklyBuffer[i] = weeklyLow;
+         if(dayShift != lastDayShift)
+         {
+            lastDayShift = dayShift;
+            dayReady = GetDailyProjection(time[i], lookback, cachedDailyHigh, cachedDailyLow, cachedDailyColor, cachedAvgDaily, cachedDailyDow);
+         }
+         if(dayReady)
+            SetDailyBuffersAt(i, cachedDailyDow, cachedDailyHigh, cachedDailyLow);
       }
-      else
+
+      if(weekShift >= 0)
       {
-         HighAvgWeeklyBuffer[i] = EMPTY_VALUE;
-         LowAvgWeeklyBuffer[i] = EMPTY_VALUE;
+         if(weekShift != lastWeekShift)
+         {
+            lastWeekShift = weekShift;
+            weekReady = GetWeeklyProjection(time[i], lookback, cachedWeeklyHigh, cachedWeeklyLow, cachedAvgWeekly);
+         }
+         if(weekReady)
+         {
+            HighAvgWeeklyBuffer[i] = cachedWeeklyHigh;
+            LowAvgWeeklyBuffer[i] = cachedWeeklyLow;
+         }
+         else
+         {
+            HighAvgWeeklyBuffer[i] = EMPTY_VALUE;
+            LowAvgWeeklyBuffer[i] = EMPTY_VALUE;
+         }
       }
    }
 
@@ -254,8 +304,8 @@ int OnCalculate(const int rates_total,
    double avgWeeklyLast = 0.0;
    int lastDailyDow = 0;
 
-   bool hasDaily = GetDailyProjection(time[lastIndex], periodo, lastDailyHigh, lastDailyLow, labelColor, avgDailyLast, lastDailyDow);
-   bool hasWeekly = GetWeeklyProjection(time[lastIndex], periodo, lastWeeklyHigh, lastWeeklyLow, avgWeeklyLast);
+   bool hasDaily = GetDailyProjection(time[lastIndex], lookback, lastDailyHigh, lastDailyLow, labelColor, avgDailyLast, lastDailyDow);
+   bool hasWeekly = GetWeeklyProjection(time[lastIndex], lookback, lastWeeklyHigh, lastWeeklyLow, avgWeeklyLast);
 
    if(hasWeekly)
    {
@@ -503,18 +553,29 @@ bool GetWeekStatsNoSunday(const int weekShift, double &weekHigh, double &weekLow
       return(false);
    datetime wEnd = wOpen + 7 * 24 * 60 * 60;
 
-   int h4Bars = iBars(Symbol(), PERIOD_H4);
+   // D1 e' molto piu' leggero di H4 e stabile in fase di caricamento storico.
+   int newestShift = iBarShift(Symbol(), PERIOD_D1, wEnd - 1, false);
+   int oldestShift = iBarShift(Symbol(), PERIOD_D1, wOpen, false);
+   if(newestShift < 0 || oldestShift < 0)
+      return(false);
+   if(newestShift > oldestShift)
+   {
+      int tmp = newestShift;
+      newestShift = oldestShift;
+      oldestShift = tmp;
+   }
+
    bool found = false;
    double hi = -DBL_MAX;
    double lo = DBL_MAX;
    datetime lastBarTime = 0;
    double lastBarClose = 0.0;
 
-   for(int i = 0; i < h4Bars; i++)
+   for(int i = newestShift; i <= oldestShift; i++)
    {
-      datetime bt = iTime(Symbol(), PERIOD_H4, i);
+      datetime bt = iTime(Symbol(), PERIOD_D1, i);
       if(bt < wOpen)
-         break;
+         continue;
       if(bt >= wEnd)
          continue;
 
@@ -522,15 +583,15 @@ bool GetWeekStatsNoSunday(const int weekShift, double &weekHigh, double &weekLow
       if(EscludiDomenica && dow == 0)
          continue;
 
-      double bh = iHigh(Symbol(), PERIOD_H4, i);
-      double bl = iLow(Symbol(), PERIOD_H4, i);
+      double bh = iHigh(Symbol(), PERIOD_D1, i);
+      double bl = iLow(Symbol(), PERIOD_D1, i);
       if(bh > hi) hi = bh;
       if(bl < lo) lo = bl;
 
       if(bt > lastBarTime)
       {
          lastBarTime = bt;
-         lastBarClose = iClose(Symbol(), PERIOD_H4, i);
+         lastBarClose = iClose(Symbol(), PERIOD_D1, i);
       }
       found = true;
    }
@@ -581,6 +642,18 @@ bool GetWeeklyProjection(const datetime barTime, const int lookback, double &lev
    levelHigh = baseClose + avgRange;
    levelLow = baseClose - avgRange;
    return(true);
+}
+
+void ResetAllBuffers()
+{
+   ArrayInitialize(HighAvgWeeklyBuffer, EMPTY_VALUE);
+   ArrayInitialize(LowAvgWeeklyBuffer, EMPTY_VALUE);
+   ArrayInitialize(HighDailyMonTueBuffer, EMPTY_VALUE);
+   ArrayInitialize(HighDailyWedThuBuffer, EMPTY_VALUE);
+   ArrayInitialize(HighDailyFriBuffer, EMPTY_VALUE);
+   ArrayInitialize(LowDailyMonTueBuffer, EMPTY_VALUE);
+   ArrayInitialize(LowDailyWedThuBuffer, EMPTY_VALUE);
+   ArrayInitialize(LowDailyFriBuffer, EMPTY_VALUE);
 }
 
 //+--------------------------------------------------------------------------------+
