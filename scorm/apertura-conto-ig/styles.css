@@ -1,0 +1,128 @@
+:root {
+  --green: #1ec677;
+  --green-dark: #0ea75e;
+  --text: #0f1633;
+  --bg: #f5f7fb;
+  --card: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: var(--text);
+  background: linear-gradient(180deg, #ffffff 0%, var(--bg) 65%);
+}
+
+.page {
+  width: min(860px, calc(100% - 2rem));
+  margin: 0 auto;
+  min-height: 100vh;
+  display: grid;
+  align-items: center;
+  padding: 2rem 0;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid #d6deee;
+  border-radius: 18px;
+  padding: clamp(1.2rem, 2vw, 2rem);
+  box-shadow: 0 12px 35px rgba(17, 28, 69, 0.08);
+}
+
+.card h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+}
+
+.card h1 span {
+  color: var(--green);
+}
+
+.card p {
+  margin: 1.15rem 0;
+  font-size: 1.15rem;
+  line-height: 1.45;
+  color: #242e4e;
+  max-width: 52ch;
+}
+
+.benefits {
+  list-style: none;
+  margin: 1rem 0 1.4rem;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.benefits li {
+  background: var(--card);
+  border: 1px solid #d6deee;
+  border-radius: 12px;
+  padding: 0.78rem 1rem 0.78rem 2.6rem;
+  position: relative;
+  font-weight: 600;
+  color: #1a2342;
+}
+
+.benefits li::before {
+  content: "✓";
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--green);
+  color: #ffffff;
+  font-size: 0.82rem;
+}
+
+.actions {
+  margin-top: 1rem;
+}
+
+.btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 0.85rem 1.2rem;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--green);
+  color: #08331f;
+  width: 100%;
+  max-width: 460px;
+  padding: 0.95rem 1.3rem;
+  font-size: 1.08rem;
+}
+
+.btn-primary:hover {
+  background: #18ba6e;
+}
+
+.status-message {
+  min-height: 1.5rem;
+  margin-top: 0.7rem;
+  color: var(--green-dark);
+  font-weight: 700;
+}
+
+@media (max-width: 940px) {
+  .page {
+    padding: 1rem 0;
+  }
+}

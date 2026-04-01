@@ -34,6 +34,8 @@
 !/release-please-config.json
 !/scripts/
 !/SECURITY.md
+!/scorm/
+!/scorm/**
 !/src
 !/static/
 !/tap-snapshots/
