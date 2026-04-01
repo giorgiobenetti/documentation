@@ -1,9 +1,7 @@
 :root {
-  --navy: #11123d;
   --green: #1ec677;
   --green-dark: #0ea75e;
   --text: #0f1633;
-  --muted: #556079;
   --bg: #f5f7fb;
   --card: #ffffff;
 }
@@ -19,109 +17,40 @@ body {
   background: linear-gradient(180deg, #ffffff 0%, var(--bg) 65%);
 }
 
-.container {
-  width: min(1120px, calc(100% - 2rem));
+.page {
+  width: min(860px, calc(100% - 2rem));
   margin: 0 auto;
-}
-
-.top-nav {
-  background: var(--navy);
-  color: #e9ecff;
-}
-
-.nav-inner {
-  min-height: 72px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.brand-mark {
-  display: inline-flex;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #6f85ff, #4ad9a0);
-  color: #0d1438;
-}
-
-.brand-text {
-  font-size: 0.93rem;
-}
-
-.menu {
-  display: flex;
-  gap: 1.3rem;
-  font-size: 0.92rem;
-  color: #c7cff6;
-}
-
-.promo {
-  background: var(--green);
-  color: #052317;
-}
-
-.promo-inner {
-  min-height: 86px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.promo strong {
-  display: block;
-  font-size: 2rem;
-  line-height: 1.05;
-}
-
-.discount {
-  display: inline-block;
-  margin-top: 0.1rem;
-  color: #dc1028;
-  font-size: 2.05rem;
-  font-weight: 800;
-}
-
-.promo-status {
-  font-size: 1.25rem;
-  color: #0b4a30;
-}
-
-.hero {
+  min-height: 100vh;
   display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 2rem;
-  padding: 2.25rem 0 1.5rem;
+  align-items: center;
+  padding: 2rem 0;
 }
 
-.hero-copy h1 {
+.card {
+  background: var(--card);
+  border: 1px solid #d6deee;
+  border-radius: 18px;
+  padding: clamp(1.2rem, 2vw, 2rem);
+  box-shadow: 0 12px 35px rgba(17, 28, 69, 0.08);
+}
+
+.card h1 {
   margin: 0;
-  font-size: clamp(2rem, 3.8vw, 4rem);
-  line-height: 0.98;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.02;
   letter-spacing: -0.02em;
 }
 
-.hero-copy h1 span {
+.card h1 span {
   color: var(--green);
 }
 
-.hero-copy p {
+.card p {
   margin: 1.15rem 0;
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   line-height: 1.45;
   color: #242e4e;
-  max-width: 48ch;
+  max-width: 52ch;
 }
 
 .benefits {
@@ -160,9 +89,7 @@ body {
 }
 
 .actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  margin-top: 1rem;
 }
 
 .btn {
@@ -177,19 +104,14 @@ body {
 .btn-primary {
   background: var(--green);
   color: #08331f;
+  width: 100%;
+  max-width: 460px;
+  padding: 0.95rem 1.3rem;
+  font-size: 1.08rem;
 }
 
 .btn-primary:hover {
   background: #18ba6e;
-}
-
-.btn-secondary {
-  background: #0e1946;
-  color: #f2f5ff;
-}
-
-.btn-secondary:hover {
-  background: #111f57;
 }
 
 .status-message {
@@ -199,86 +121,8 @@ body {
   font-weight: 700;
 }
 
-.hero-visual {
-  display: grid;
-  place-items: center;
-}
-
-.chart-card {
-  width: min(500px, 100%);
-  min-height: 460px;
-  border: 1px dashed #c8d0e7;
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at 85% 22%, #e4f7f1 0, #f8fafc 40%, #f8fafc 100%),
-    #f8fafc;
-  padding: 2rem;
-  position: relative;
-  overflow: hidden;
-}
-
-.bars {
-  display: grid;
-  gap: 0.62rem;
-  margin-top: 0.5rem;
-}
-
-.bars span {
-  display: block;
-  height: 22px;
-  border-radius: 0 8px 8px 0;
-  width: var(--w);
-  background: linear-gradient(90deg, #a69eff, #ffafb0);
-  opacity: 0.8;
-}
-
-.line {
-  width: 86%;
-  height: 6px;
-  border-radius: 99px;
-  background: #ff3850;
-  margin-top: 1.2rem;
-}
-
-.badge {
-  position: absolute;
-  top: 45%;
-  left: 42%;
-  transform: translate(-25%, -25%);
-  background: linear-gradient(135deg, #7df0c1, #bbf7d0);
-  color: #08331f;
-  border: 1px solid #8fe8c0;
-  border-radius: 12px;
-  font-weight: 700;
-  padding: 0.55rem 0.8rem;
-  box-shadow: 0 10px 30px rgba(19, 93, 62, 0.15);
-}
-
-.footer-note {
-  color: #4b5678;
-  font-size: 0.95rem;
-  padding: 0.4rem 0 2rem;
-}
-
 @media (max-width: 940px) {
-  .menu {
-    display: none;
-  }
-
-  .hero {
-    grid-template-columns: 1fr;
-  }
-
-  .chart-card {
-    min-height: 320px;
-  }
-
-  .promo strong,
-  .discount {
-    font-size: 1.5rem;
-  }
-
-  .promo-status {
-    font-size: 1rem;
+  .page {
+    padding: 1rem 0;
   }
 }

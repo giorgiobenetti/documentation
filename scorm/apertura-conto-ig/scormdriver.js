@@ -70,26 +70,14 @@
 
   function bindUi() {
     var openButton = document.getElementById("cta-open-account");
-    var completeButton = document.getElementById("cta-complete");
-    if (!openButton || !completeButton) {
+    if (!openButton) {
       return;
     }
 
     openButton.addEventListener("click", function () {
       window.open(OPEN_ACCOUNT_URL, "_blank", "noopener,noreferrer");
       setStatus("Link aperto in una nuova scheda. Completa il form IG.", false);
-    });
-
-    completeButton.addEventListener("click", function () {
-      var tracked = completeLesson();
-      if (tracked) {
-        setStatus("Completamento registrato su LearnWorlds.", false);
-      } else {
-        setStatus(
-          "Procedura completata (tracking SCORM non disponibile in anteprima).",
-          false
-        );
-      }
+      completeLesson();
     });
   }
 
