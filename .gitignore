@@ -43,3 +43,4 @@
 tap-testdir*/
 !/cli/
 !/Target Indicator.mq4
+!/Biz Forex Strength.mq4
