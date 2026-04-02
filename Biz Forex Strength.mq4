@@ -31,6 +31,7 @@ double EUR, GBP, AUD, NZD, USD, CAD, CHF, JPY, A1, A2, A3, A4, A5, A6, A7;
 
 string Currencies[] = {"AUD", "CAD", "CHF", "EUR", "GBP", "JPY", "NZD", "USD"};
 int xTabella = 30, yTabella = 15, spaziox = 22, spazioy = 20, widthTabella = 22, heightTabella = 20;
+string OBJ_PREFIX = "BFS_";
 
 string symbols[28] =
 {
@@ -87,6 +88,21 @@ void DeleteObjectsByPrefix(const string prefix)
    }
 }
 
+string RowName(const int idx)   { return OBJ_PREFIX + Currencies[idx]; }
+string CellName(const int idx, const int cell) { return OBJ_PREFIX + Currencies[idx] + IntegerToString(cell); }
+string ValueName(const int idx) { return OBJ_PREFIX + "Valore" + Currencies[idx]; }
+
+void DeleteLegacyTableObjects()
+{
+   for(int i = 0; i < 8; i++)
+   {
+      ObjectDelete(Currencies[i]);
+      ObjectDelete("Valore" + Currencies[i]);
+      for(int j = 0; j < 8; j++)
+         ObjectDelete(Currencies[i] + IntegerToString(j));
+   }
+}
+
 double MAValue(const int index, const int shift)
 {
    return iMA(symbolsWithSuffix[index], PERIOD_CURRENT, ma_period_, 0, MODE_LWMA, PRICE_CLOSE, shift);
@@ -109,9 +125,9 @@ void ResetTableToNeutral()
 {
    for(int i = 0; i < 8; i++)
    {
-      ObjectSetString(0, "Valore" + Currencies[i], OBJPROP_TEXT, "--");
+      ObjectSetString(0, ValueName(i), OBJPROP_TEXT, "--");
       for(int j = 0; j < 8; j++)
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_BGCOLOR, clrWhite);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_BGCOLOR, clrWhite);
    }
 }
 
@@ -198,6 +214,8 @@ int OnInit()
    if(!CreateHandles())
       return(INIT_FAILED);
 
+   DeleteObjectsByPrefix(OBJ_PREFIX);
+   DeleteLegacyTableObjects();
    SetVariablesBasedOnTimeframe();
    CreaTabella();
    ResetTableToNeutral();
@@ -209,13 +227,8 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-   for(int i = 0; i < 8; i++)
-   {
-      ObjectDelete(Currencies[i]);
-      ObjectDelete("Valore" + Currencies[i]);
-      for(int j = 0; j < 8; j++)
-         ObjectDelete(Currencies[i] + IntegerToString(j));
-   }
+   DeleteObjectsByPrefix(OBJ_PREFIX);
+   DeleteLegacyTableObjects();
    DeleteObjectsByPrefix("ExpiredIndicatorText");
    ObjectDelete("BIZExpiredIndicatorText");
 }
@@ -416,47 +429,47 @@ void CreaTabella()
 {
    for(int i = 0; i < 8; i++)
    {
-      ObjectCreate(0, Currencies[i], OBJ_LABEL, 0, 0, 0);
-      ObjectSetInteger(0, Currencies[i], OBJPROP_XDISTANCE, xTabella + spaziox * 11);
-      ObjectSetInteger(0, Currencies[i], OBJPROP_YDISTANCE, yTabella + spazioy * i + 1);
-      ObjectSetInteger(0, Currencies[i], OBJPROP_FONTSIZE, 9);
-      ObjectSetInteger(0, Currencies[i], OBJPROP_CORNER, CORNER_RIGHT_UPPER);
-      ObjectSetString(0, Currencies[i], OBJPROP_TEXT, Currencies[i]);
-      ObjectSetInteger(0, Currencies[i], OBJPROP_COLOR, clrBlack);
-      ObjectSetInteger(0, Currencies[i], OBJPROP_ALIGN, ALIGN_CENTER);
-      ObjectSetInteger(0, Currencies[i], OBJPROP_BACK, false);
-      ObjectSetInteger(0, Currencies[i], OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, Currencies[i], OBJPROP_SELECTED, false);
+      ObjectCreate(0, RowName(i), OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, RowName(i), OBJPROP_XDISTANCE, xTabella + spaziox * 11);
+      ObjectSetInteger(0, RowName(i), OBJPROP_YDISTANCE, yTabella + spazioy * i + 1);
+      ObjectSetInteger(0, RowName(i), OBJPROP_FONTSIZE, 9);
+      ObjectSetInteger(0, RowName(i), OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+      ObjectSetString(0, RowName(i), OBJPROP_TEXT, Currencies[i]);
+      ObjectSetInteger(0, RowName(i), OBJPROP_COLOR, clrBlack);
+      ObjectSetInteger(0, RowName(i), OBJPROP_ALIGN, ALIGN_CENTER);
+      ObjectSetInteger(0, RowName(i), OBJPROP_BACK, false);
+      ObjectSetInteger(0, RowName(i), OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, RowName(i), OBJPROP_SELECTED, false);
 
       for(int j = 0; j < 8; j++)
       {
-         ObjectCreate(0, Currencies[i] + IntegerToString(j), OBJ_RECTANGLE_LABEL, 0, 0, 0);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_CORNER, CORNER_RIGHT_UPPER);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_XDISTANCE, xTabella + spaziox * 2 + spaziox * j);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_YDISTANCE, yTabella + spazioy * i);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_XSIZE, widthTabella);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_YSIZE, heightTabella);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_BGCOLOR, clrWhite);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_BORDER_TYPE, BORDER_FLAT);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_COLOR, clrBlack);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_STYLE, STYLE_SOLID);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_WIDTH, 1);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_BACK, false);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_SELECTABLE, false);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_SELECTED, false);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_HIDDEN, true);
+         ObjectCreate(0, CellName(i, j), OBJ_RECTANGLE_LABEL, 0, 0, 0);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_XDISTANCE, xTabella + spaziox * 2 + spaziox * j);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_YDISTANCE, yTabella + spazioy * i);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_XSIZE, widthTabella);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_YSIZE, heightTabella);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_BGCOLOR, clrWhite);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_BORDER_TYPE, BORDER_FLAT);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_COLOR, clrBlack);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_STYLE, STYLE_SOLID);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_WIDTH, 1);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_BACK, false);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_SELECTABLE, false);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_SELECTED, false);
+         ObjectSetInteger(0, CellName(i, j), OBJPROP_HIDDEN, true);
       }
 
-      ObjectCreate(0, "Valore" + Currencies[i], OBJ_LABEL, 0, 0, 0);
-      ObjectSetInteger(0, "Valore" + Currencies[i], OBJPROP_XDISTANCE, xTabella);
-      ObjectSetInteger(0, "Valore" + Currencies[i], OBJPROP_YDISTANCE, yTabella + spazioy * i + 1);
-      ObjectSetInteger(0, "Valore" + Currencies[i], OBJPROP_FONTSIZE, 9);
-      ObjectSetInteger(0, "Valore" + Currencies[i], OBJPROP_CORNER, CORNER_RIGHT_UPPER);
-      ObjectSetInteger(0, "Valore" + Currencies[i], OBJPROP_COLOR, clrBlack);
-      ObjectSetInteger(0, "Valore" + Currencies[i], OBJPROP_BACK, false);
-      ObjectSetInteger(0, "Valore" + Currencies[i], OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, "Valore" + Currencies[i], OBJPROP_SELECTED, false);
-      ObjectSetInteger(0, "Valore" + Currencies[i], OBJPROP_ALIGN, ALIGN_CENTER);
+      ObjectCreate(0, ValueName(i), OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, ValueName(i), OBJPROP_XDISTANCE, xTabella);
+      ObjectSetInteger(0, ValueName(i), OBJPROP_YDISTANCE, yTabella + spazioy * i + 1);
+      ObjectSetInteger(0, ValueName(i), OBJPROP_FONTSIZE, 9);
+      ObjectSetInteger(0, ValueName(i), OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+      ObjectSetInteger(0, ValueName(i), OBJPROP_COLOR, clrBlack);
+      ObjectSetInteger(0, ValueName(i), OBJPROP_BACK, false);
+      ObjectSetInteger(0, ValueName(i), OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, ValueName(i), OBJPROP_SELECTED, false);
+      ObjectSetInteger(0, ValueName(i), OBJPROP_ALIGN, ALIGN_CENTER);
    }
 }
 
@@ -465,28 +478,28 @@ void CreaTabella()
 //+------------------------------------------------------------------+
 void aggiornacolori(int OrdineMoneta, double valoreAggiornare)
 {
-   ObjectSetString(0, "Valore" + Currencies[OrdineMoneta], OBJPROP_TEXT, IntegerToString((int)valoreAggiornare));
+   ObjectSetString(0, ValueName(OrdineMoneta), OBJPROP_TEXT, IntegerToString((int)valoreAggiornare));
    if(valoreAggiornare <= Ln5)
    {
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(0), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(1), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(2), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(3), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(4), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(5), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(6), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(7), OBJPROP_BGCOLOR, clrRed);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 0), OBJPROP_BGCOLOR, clrWhite);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 1), OBJPROP_BGCOLOR, clrWhite);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 2), OBJPROP_BGCOLOR, clrWhite);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 3), OBJPROP_BGCOLOR, clrWhite);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 4), OBJPROP_BGCOLOR, clrRed);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 5), OBJPROP_BGCOLOR, clrRed);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 6), OBJPROP_BGCOLOR, clrRed);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 7), OBJPROP_BGCOLOR, clrRed);
    }
    else if(valoreAggiornare > Ln5 && valoreAggiornare <= Ln4)
    {
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(0), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(1), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(2), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(3), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(4), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(5), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(6), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(7), OBJPROP_BGCOLOR, clrRed);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 0), OBJPROP_BGCOLOR, clrWhite);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 1), OBJPROP_BGCOLOR, clrWhite);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 2), OBJPROP_BGCOLOR, clrWhite);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 3), OBJPROP_BGCOLOR, clrWhite);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 4), OBJPROP_BGCOLOR, clrRed);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 5), OBJPROP_BGCOLOR, clrRed);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 6), OBJPROP_BGCOLOR, clrRed);
+      ObjectSetInteger(0, CellName(OrdineMoneta, 7), OBJPROP_BGCOLOR, clrRed);
    }
    else if(valoreAggiornare > Ln4 && valoreAggiornare <= Ln3)
    {
