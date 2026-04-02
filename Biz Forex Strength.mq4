@@ -252,110 +252,113 @@ int OnCalculate(const int rates_total,
    if(currentDateTime > expirationDate)
       return(0);
 
-   int requiredBars = ma_period_ + ma_delta + 2;
+   int limit = rates_total;
    for(int i = 0; i < ArraySize(symbolsWithSuffix); i++)
    {
       int barsCount = iBars(symbolsWithSuffix[i], PERIOD_CURRENT);
-      if(barsCount < requiredBars)
+      if(barsCount <= 0)
       {
          Print(__FUNCTION__, ": ", symbolsWithSuffix[i], " Non pronto");
          CheckLoadHistory(symbolsWithSuffix[i], PERIOD_CURRENT, ma_period_ + ma_delta + 50);
-         if(prev_calculated <= 0)
-            ResetTableToNeutral();
-         return(rates_total);
+         return(0);
       }
+      limit = (int)MathMin(limit, barsCount);
    }
 
-   // La tabella usa solo i valori correnti, quindi calcoliamo lo shift 0
-   // (più robusto rispetto al ciclo storico completo quando alcune serie
-   // hanno buchi nelle barre vecchie).
-   double rel[28];
-   if(!BuildRelRatios(0, rel))
-   {
-      if(prev_calculated <= 0)
-         ResetTableToNeutral();
+   if(prev_calculated > rates_total || prev_calculated <= 0)
+      limit = limit - ma_delta;
+   else
+      limit = rates_total - prev_calculated + 1;
+
+   if(limit <= 0)
       return(rates_total);
+
+   for(int i = 0; i < limit; i++)
+   {
+      double rel[28];
+      if(!BuildRelRatios(i, rel))
+         continue;
+
+      A1 = rel[EURAUD];  // EURAUD*
+      A2 = rel[GBPAUD];  // GBPAUD*
+      A3 = rel[AUDNZD];  // AUDNZD
+      A4 = rel[AUDUSD];  // AUDUSD
+      A5 = rel[AUDCAD];  // AUDCAD
+      A6 = rel[AUDCHF];  // AUDCHF
+      A7 = rel[AUDJPY];  // AUDJPY
+      AUD = (1 / A1 * 1 / A2 * A3 * A4 * A5 * A6 * A7) - 1;
+      AUDx[i] = AUD;
+
+      A1 = rel[EURCAD];  // EURCAD*
+      A2 = rel[GBPCAD];  // GBPCAD*
+      A3 = rel[AUDCAD];  // AUDCAD*
+      A4 = rel[NZDCAD];  // NZDCAD*
+      A5 = rel[USDCAD];  // USDCAD*
+      A6 = rel[CADCHF];  // CADCHF
+      A7 = rel[CADJPY];  // CADJPY
+      CAD = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * A6 * A7) - 1;
+      CADx[i] = CAD;
+
+      A1 = rel[EURCHF];  // EURCHF*
+      A2 = rel[GBPCHF];  // GBPCHF*
+      A3 = rel[AUDCHF];  // AUDCHF*
+      A4 = rel[NZDCHF];  // NZDCHF*
+      A5 = rel[USDCHF];  // USDCHF*
+      A6 = rel[CADCHF];  // CADCHF*
+      A7 = rel[CHFJPY];  // CHFJPY
+      CHF = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * 1 / A6 * A7) - 1;
+      CHFx[i] = CHF;
+
+      A1 = rel[EURGBP];  // EURGBP
+      A2 = rel[EURAUD];  // EURAUD
+      A3 = rel[EURNZD];  // EURNZD
+      A4 = rel[EURUSD];  // EURUSD
+      A5 = rel[EURCAD];  // EURCAD
+      A6 = rel[EURCHF];  // EURCHF
+      A7 = rel[EURJPY];  // EURJPY
+      EUR = (A1 * A2 * A3 * A4 * A5 * A6 * A7) - 1;
+      EURx[i] = EUR;
+
+      A1 = rel[EURGBP];  // EURGBP*
+      A2 = rel[GBPAUD];  // GBPAUD
+      A3 = rel[GBPNZD];  // GBPNZD
+      A4 = rel[GBPUSD];  // GBPUSD
+      A5 = rel[GBPCAD];  // GBPCAD
+      A6 = rel[GBPCHF];  // GBPCHF
+      A7 = rel[GBPJPY];  // GBPJPY
+      GBP = (1 / A1 * A2 * A3 * A4 * A5 * A6 * A7) - 1;
+      GBPx[i] = GBP;
+
+      A1 = rel[EURJPY];  // EURJPY*
+      A2 = rel[GBPJPY];  // GBPJPY*
+      A3 = rel[AUDJPY];  // AUDJPY*
+      A4 = rel[NZDJPY];  // NZDJPY*
+      A5 = rel[USDJPY];  // USDJPY*
+      A6 = rel[CADJPY];  // CADJPY*
+      A7 = rel[CHFJPY];  // CHFJPY*
+      JPY = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * 1 / A6 * 1 / A7) - 1;
+      JPYx[i] = JPY;
+
+      A1 = rel[EURNZD];  // EURNZD*
+      A2 = rel[GBPNZD];  // GBPNZD*
+      A3 = rel[AUDNZD];  // AUDNZD*
+      A4 = rel[NZDUSD];  // NZDUSD
+      A5 = rel[NZDCAD];  // NZDCAD
+      A6 = rel[NZDCHF];  // NZDCHF
+      A7 = rel[NZDJPY];  // NZDJPY
+      NZD = (1 / A1 * 1 / A2 * 1 / A3 * A4 * A5 * A6 * A7) - 1;
+      NZDx[i] = NZD;
+
+      A1 = rel[EURUSD];  // EURUSD*
+      A2 = rel[GBPUSD];  // GBPUSD*
+      A3 = rel[AUDUSD];  // AUDUSD*
+      A4 = rel[NZDUSD];  // NZDUSD*
+      A5 = rel[USDCAD];  // USDCAD
+      A6 = rel[USDCHF];  // USDCHF
+      A7 = rel[USDJPY];  // USDJPY
+      USD = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * A5 * A6 * A7) - 1;
+      USDx[i] = USD;
    }
-
-   A1 = rel[EURAUD];  // EURAUD*
-   A2 = rel[GBPAUD];  // GBPAUD*
-   A3 = rel[AUDNZD];  // AUDNZD
-   A4 = rel[AUDUSD];  // AUDUSD
-   A5 = rel[AUDCAD];  // AUDCAD
-   A6 = rel[AUDCHF];  // AUDCHF
-   A7 = rel[AUDJPY];  // AUDJPY
-   AUD = (1 / A1 * 1 / A2 * A3 * A4 * A5 * A6 * A7) - 1;
-   AUDx[0] = AUD;
-
-   A1 = rel[EURCAD];  // EURCAD*
-   A2 = rel[GBPCAD];  // GBPCAD*
-   A3 = rel[AUDCAD];  // AUDCAD*
-   A4 = rel[NZDCAD];  // NZDCAD*
-   A5 = rel[USDCAD];  // USDCAD*
-   A6 = rel[CADCHF];  // CADCHF
-   A7 = rel[CADJPY];  // CADJPY
-   CAD = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * A6 * A7) - 1;
-   CADx[0] = CAD;
-
-   A1 = rel[EURCHF];  // EURCHF*
-   A2 = rel[GBPCHF];  // GBPCHF*
-   A3 = rel[AUDCHF];  // AUDCHF*
-   A4 = rel[NZDCHF];  // NZDCHF*
-   A5 = rel[USDCHF];  // USDCHF*
-   A6 = rel[CADCHF];  // CADCHF*
-   A7 = rel[CHFJPY];  // CHFJPY
-   CHF = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * 1 / A6 * A7) - 1;
-   CHFx[0] = CHF;
-
-   A1 = rel[EURGBP];  // EURGBP
-   A2 = rel[EURAUD];  // EURAUD
-   A3 = rel[EURNZD];  // EURNZD
-   A4 = rel[EURUSD];  // EURUSD
-   A5 = rel[EURCAD];  // EURCAD
-   A6 = rel[EURCHF];  // EURCHF
-   A7 = rel[EURJPY];  // EURJPY
-   EUR = (A1 * A2 * A3 * A4 * A5 * A6 * A7) - 1;
-   EURx[0] = EUR;
-
-   A1 = rel[EURGBP];  // EURGBP*
-   A2 = rel[GBPAUD];  // GBPAUD
-   A3 = rel[GBPNZD];  // GBPNZD
-   A4 = rel[GBPUSD];  // GBPUSD
-   A5 = rel[GBPCAD];  // GBPCAD
-   A6 = rel[GBPCHF];  // GBPCHF
-   A7 = rel[GBPJPY];  // GBPJPY
-   GBP = (1 / A1 * A2 * A3 * A4 * A5 * A6 * A7) - 1;
-   GBPx[0] = GBP;
-
-   A1 = rel[EURJPY];  // EURJPY*
-   A2 = rel[GBPJPY];  // GBPJPY*
-   A3 = rel[AUDJPY];  // AUDJPY*
-   A4 = rel[NZDJPY];  // NZDJPY*
-   A5 = rel[USDJPY];  // USDJPY*
-   A6 = rel[CADJPY];  // CADJPY*
-   A7 = rel[CHFJPY];  // CHFJPY*
-   JPY = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * 1 / A6 * 1 / A7) - 1;
-   JPYx[0] = JPY;
-
-   A1 = rel[EURNZD];  // EURNZD*
-   A2 = rel[GBPNZD];  // GBPNZD*
-   A3 = rel[AUDNZD];  // AUDNZD*
-   A4 = rel[NZDUSD];  // NZDUSD
-   A5 = rel[NZDCAD];  // NZDCAD
-   A6 = rel[NZDCHF];  // NZDCHF
-   A7 = rel[NZDJPY];  // NZDJPY
-   NZD = (1 / A1 * 1 / A2 * 1 / A3 * A4 * A5 * A6 * A7) - 1;
-   NZDx[0] = NZD;
-
-   A1 = rel[EURUSD];  // EURUSD*
-   A2 = rel[GBPUSD];  // GBPUSD*
-   A3 = rel[AUDUSD];  // AUDUSD*
-   A4 = rel[NZDUSD];  // NZDUSD*
-   A5 = rel[USDCAD];  // USDCAD
-   A6 = rel[USDCHF];  // USDCHF
-   A7 = rel[USDJPY];  // USDJPY
-   USD = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * A5 * A6 * A7) - 1;
-   USDx[0] = USD;
 
    aggiornacolori(0, AUDx[0] * 10000.0);
    aggiornacolori(1, CADx[0] * 10000.0);
