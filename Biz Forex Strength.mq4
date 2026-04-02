@@ -41,6 +41,8 @@ string symbols[28] =
    "NZDCAD","NZDCHF","NZDJPY","NZDUSD","USDCAD","USDCHF","USDJPY"
 };
 string symbolsWithSuffix[28];
+string symbolPrefix = "";
+string symbolSuffix = "";
 
 double Ln1 = -5, Ln2 = -10, Ln3 = -15, Ln4 = -20, Ln5 = -25;
 double Lp1 = 5, Lp2 = 10, Lp3 = 15, Lp4 = 20, Lp5 = 25;
@@ -251,121 +253,110 @@ int OnCalculate(const int rates_total,
    if(currentDateTime > expirationDate)
       return(0);
 
-   int minBars = rates_total;
+   int requiredBars = ma_period_ + ma_delta + 2;
    for(int i = 0; i < ArraySize(symbolsWithSuffix); i++)
    {
       int barsCount = iBars(symbolsWithSuffix[i], PERIOD_CURRENT);
-      if(barsCount <= (ma_period_ + ma_delta + 1))
+      if(barsCount < requiredBars)
       {
          Print(__FUNCTION__, ": ", symbolsWithSuffix[i], " Non pronto");
          CheckLoadHistory(symbolsWithSuffix[i], PERIOD_CURRENT, ma_period_ + ma_delta + 50);
-         ResetTableToNeutral();
-         return(0);
+         if(prev_calculated <= 0)
+            ResetTableToNeutral();
+         return(rates_total);
       }
-      minBars = (int)MathMin(minBars, barsCount);
    }
 
-   int limit = rates_total;
-   if(prev_calculated > rates_total || prev_calculated <= 0)
-      limit = minBars - ma_delta - 1;
-   else
-      limit = rates_total - prev_calculated + 1;
-
-   if(limit <= 0)
+   // La tabella usa solo i valori correnti, quindi calcoliamo lo shift 0
+   // (più robusto rispetto al ciclo storico completo quando alcune serie
+   // hanno buchi nelle barre vecchie).
+   double rel[28];
+   if(!BuildRelRatios(0, rel))
    {
-      ResetTableToNeutral();
+      if(prev_calculated <= 0)
+         ResetTableToNeutral();
       return(rates_total);
    }
 
-   for(int i = 0; i < limit; i++)
-   {
-      double rel[28];
-      if(!BuildRelRatios(i, rel))
-      {
-         ResetTableToNeutral();
-         return(0);
-      }
+   A1 = rel[EURAUD];  // EURAUD*
+   A2 = rel[GBPAUD];  // GBPAUD*
+   A3 = rel[AUDNZD];  // AUDNZD
+   A4 = rel[AUDUSD];  // AUDUSD
+   A5 = rel[AUDCAD];  // AUDCAD
+   A6 = rel[AUDCHF];  // AUDCHF
+   A7 = rel[AUDJPY];  // AUDJPY
+   AUD = (1 / A1 * 1 / A2 * A3 * A4 * A5 * A6 * A7) - 1;
+   AUDx[0] = AUD;
 
-      A1 = rel[EURAUD];  // EURAUD*
-      A2 = rel[GBPAUD];  // GBPAUD*
-      A3 = rel[AUDNZD];  // AUDNZD
-      A4 = rel[AUDUSD];  // AUDUSD
-      A5 = rel[AUDCAD];  // AUDCAD
-      A6 = rel[AUDCHF];  // AUDCHF
-      A7 = rel[AUDJPY];  // AUDJPY
-      AUD = (1 / A1 * 1 / A2 * A3 * A4 * A5 * A6 * A7) - 1;
-      AUDx[i] = AUD;
+   A1 = rel[EURCAD];  // EURCAD*
+   A2 = rel[GBPCAD];  // GBPCAD*
+   A3 = rel[AUDCAD];  // AUDCAD*
+   A4 = rel[NZDCAD];  // NZDCAD*
+   A5 = rel[USDCAD];  // USDCAD*
+   A6 = rel[CADCHF];  // CADCHF
+   A7 = rel[CADJPY];  // CADJPY
+   CAD = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * A6 * A7) - 1;
+   CADx[0] = CAD;
 
-      A1 = rel[EURCAD];  // EURCAD*
-      A2 = rel[GBPCAD];  // GBPCAD*
-      A3 = rel[AUDCAD];  // AUDCAD*
-      A4 = rel[NZDCAD];  // NZDCAD*
-      A5 = rel[USDCAD];  // USDCAD*
-      A6 = rel[CADCHF];  // CADCHF
-      A7 = rel[CADJPY];  // CADJPY
-      CAD = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * A6 * A7) - 1;
-      CADx[i] = CAD;
+   A1 = rel[EURCHF];  // EURCHF*
+   A2 = rel[GBPCHF];  // GBPCHF*
+   A3 = rel[AUDCHF];  // AUDCHF*
+   A4 = rel[NZDCHF];  // NZDCHF*
+   A5 = rel[USDCHF];  // USDCHF*
+   A6 = rel[CADCHF];  // CADCHF*
+   A7 = rel[CHFJPY];  // CHFJPY
+   CHF = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * 1 / A6 * A7) - 1;
+   CHFx[0] = CHF;
 
-      A1 = rel[EURCHF];  // EURCHF*
-      A2 = rel[GBPCHF];  // GBPCHF*
-      A3 = rel[AUDCHF];  // AUDCHF*
-      A4 = rel[NZDCHF];  // NZDCHF*
-      A5 = rel[USDCHF];  // USDCHF*
-      A6 = rel[CADCHF];  // CADCHF*
-      A7 = rel[CHFJPY];  // CHFJPY
-      CHF = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * 1 / A6 * A7) - 1;
-      CHFx[i] = CHF;
+   A1 = rel[EURGBP];  // EURGBP
+   A2 = rel[EURAUD];  // EURAUD
+   A3 = rel[EURNZD];  // EURNZD
+   A4 = rel[EURUSD];  // EURUSD
+   A5 = rel[EURCAD];  // EURCAD
+   A6 = rel[EURCHF];  // EURCHF
+   A7 = rel[EURJPY];  // EURJPY
+   EUR = (A1 * A2 * A3 * A4 * A5 * A6 * A7) - 1;
+   EURx[0] = EUR;
 
-      A1 = rel[EURGBP];  // EURGBP
-      A2 = rel[EURAUD];  // EURAUD
-      A3 = rel[EURNZD];  // EURNZD
-      A4 = rel[EURUSD];  // EURUSD
-      A5 = rel[EURCAD];  // EURCAD
-      A6 = rel[EURCHF];  // EURCHF
-      A7 = rel[EURJPY];  // EURJPY
-      EUR = (A1 * A2 * A3 * A4 * A5 * A6 * A7) - 1;
-      EURx[i] = EUR;
+   A1 = rel[EURGBP];  // EURGBP*
+   A2 = rel[GBPAUD];  // GBPAUD
+   A3 = rel[GBPNZD];  // GBPNZD
+   A4 = rel[GBPUSD];  // GBPUSD
+   A5 = rel[GBPCAD];  // GBPCAD
+   A6 = rel[GBPCHF];  // GBPCHF
+   A7 = rel[GBPJPY];  // GBPJPY
+   GBP = (1 / A1 * A2 * A3 * A4 * A5 * A6 * A7) - 1;
+   GBPx[0] = GBP;
 
-      A1 = rel[EURGBP];  // EURGBP*
-      A2 = rel[GBPAUD];  // GBPAUD
-      A3 = rel[GBPNZD];  // GBPNZD
-      A4 = rel[GBPUSD];  // GBPUSD
-      A5 = rel[GBPCAD];  // GBPCAD
-      A6 = rel[GBPCHF];  // GBPCHF
-      A7 = rel[GBPJPY];  // GBPJPY
-      GBP = (1 / A1 * A2 * A3 * A4 * A5 * A6 * A7) - 1;
-      GBPx[i] = GBP;
+   A1 = rel[EURJPY];  // EURJPY*
+   A2 = rel[GBPJPY];  // GBPJPY*
+   A3 = rel[AUDJPY];  // AUDJPY*
+   A4 = rel[NZDJPY];  // NZDJPY*
+   A5 = rel[USDJPY];  // USDJPY*
+   A6 = rel[CADJPY];  // CADJPY*
+   A7 = rel[CHFJPY];  // CHFJPY*
+   JPY = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * 1 / A6 * 1 / A7) - 1;
+   JPYx[0] = JPY;
 
-      A1 = rel[EURJPY];  // EURJPY*
-      A2 = rel[GBPJPY];  // GBPJPY*
-      A3 = rel[AUDJPY];  // AUDJPY*
-      A4 = rel[NZDJPY];  // NZDJPY*
-      A5 = rel[USDJPY];  // USDJPY*
-      A6 = rel[CADJPY];  // CADJPY*
-      A7 = rel[CHFJPY];  // CHFJPY*
-      JPY = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * 1 / A6 * 1 / A7) - 1;
-      JPYx[i] = JPY;
+   A1 = rel[EURNZD];  // EURNZD*
+   A2 = rel[GBPNZD];  // GBPNZD*
+   A3 = rel[AUDNZD];  // AUDNZD*
+   A4 = rel[NZDUSD];  // NZDUSD
+   A5 = rel[NZDCAD];  // NZDCAD
+   A6 = rel[NZDCHF];  // NZDCHF
+   A7 = rel[NZDJPY];  // NZDJPY
+   NZD = (1 / A1 * 1 / A2 * 1 / A3 * A4 * A5 * A6 * A7) - 1;
+   NZDx[0] = NZD;
 
-      A1 = rel[EURNZD];  // EURNZD*
-      A2 = rel[GBPNZD];  // GBPNZD*
-      A3 = rel[AUDNZD];  // AUDNZD*
-      A4 = rel[NZDUSD];  // NZDUSD
-      A5 = rel[NZDCAD];  // NZDCAD
-      A6 = rel[NZDCHF];  // NZDCHF
-      A7 = rel[NZDJPY];  // NZDJPY
-      NZD = (1 / A1 * 1 / A2 * 1 / A3 * A4 * A5 * A6 * A7) - 1;
-      NZDx[i] = NZD;
-
-      A1 = rel[EURUSD];  // EURUSD*
-      A2 = rel[GBPUSD];  // GBPUSD*
-      A3 = rel[AUDUSD];  // AUDUSD*
-      A4 = rel[NZDUSD];  // NZDUSD*
-      A5 = rel[USDCAD];  // USDCAD
-      A6 = rel[USDCHF];  // USDCHF
-      A7 = rel[USDJPY];  // USDJPY
-      USD = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * A5 * A6 * A7) - 1;
-      USDx[i] = USD;
-   }
+   A1 = rel[EURUSD];  // EURUSD*
+   A2 = rel[GBPUSD];  // GBPUSD*
+   A3 = rel[AUDUSD];  // AUDUSD*
+   A4 = rel[NZDUSD];  // NZDUSD*
+   A5 = rel[USDCAD];  // USDCAD
+   A6 = rel[USDCHF];  // USDCHF
+   A7 = rel[USDJPY];  // USDJPY
+   USD = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * A5 * A6 * A7) - 1;
+   USDx[0] = USD;
 
    aggiornacolori(0, AUDx[0] * 10000.0);
    aggiornacolori(1, CADx[0] * 10000.0);
@@ -384,14 +375,46 @@ int OnCalculate(const int rates_total,
 //+------------------------------------------------------------------+
 bool CreateHandles()
 {
-   string SymbolSuffix = StringSubstr(Symbol(), 6, StringLen(Symbol()) - 6);
+   string current = Symbol();
+   symbolPrefix = "";
+   symbolSuffix = "";
+
+   // Rileva eventuale prefisso/suffisso del broker partendo dal simbolo corrente.
+   // Esempi gestiti: EURUSD, m.EURUSD, EURUSD.a, m.EURUSD.a
+   int foundPos = -1;
+   for(int k = 0; k < ArraySize(symbols); k++)
+   {
+      int p = StringFind(current, symbols[k], 0);
+      if(p >= 0)
+      {
+         foundPos = p;
+         symbolPrefix = StringSubstr(current, 0, p);
+         symbolSuffix = StringSubstr(current, p + 6, StringLen(current) - (p + 6));
+         break;
+      }
+   }
+
+   // Fallback compatibile con la logica precedente (solo suffisso, nessun prefisso)
+   if(foundPos < 0 && StringLen(current) > 6)
+      symbolSuffix = StringSubstr(current, 6, StringLen(current) - 6);
+
    for(int i = 0; i < ArraySize(symbols); i++)
    {
-      string symbol = symbols[i] + SymbolSuffix;
-      symbolsWithSuffix[i] = symbol;
-      if(!CheckMarketWatch(symbol))
+      string symbol = symbolPrefix + symbols[i] + symbolSuffix;
+      bool ok = CheckMarketWatch(symbol);
+
+      // Se la ricostruzione con prefisso/suffisso non è valida, prova il simbolo "pulito"
+      if(!ok)
+      {
+         symbol = symbols[i];
+         ok = CheckMarketWatch(symbol);
+      }
+
+      if(!ok)
          return(false);
-      CheckLoadHistory(symbol, PERIOD_CURRENT, ma_period_ + ma_delta + 100);
+
+      symbolsWithSuffix[i] = symbol;
+      CheckLoadHistory(symbolsWithSuffix[i], PERIOD_CURRENT, ma_period_ + ma_delta + 100);
    }
    return(true);
 }
