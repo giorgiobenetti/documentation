@@ -41,7 +41,6 @@ string symbols[28] =
    "NZDCAD","NZDCHF","NZDJPY","NZDUSD","USDCAD","USDCHF","USDJPY"
 };
 string symbolsWithSuffix[28];
-string symbolPrefix = "";
 string symbolSuffix = "";
 
 double Ln1 = -5, Ln2 = -10, Ln3 = -15, Ln4 = -20, Ln5 = -25;
@@ -72,7 +71,7 @@ double Lp1 = 5, Lp2 = 10, Lp3 = 15, Lp4 = 20, Lp5 = 25;
 #define NZDCHF 22
 #define NZDJPY 23
 #define NZDUSD 24
-#define USDCAD 25
+#define USDCAD 26
 #define USDCHF 26
 #define USDJPY 27
 
@@ -376,41 +375,14 @@ int OnCalculate(const int rates_total,
 bool CreateHandles()
 {
    string current = Symbol();
-   symbolPrefix = "";
    symbolSuffix = "";
-
-   // Rileva eventuale prefisso/suffisso del broker partendo dal simbolo corrente.
-   // Esempi gestiti: EURUSD, m.EURUSD, EURUSD.a, m.EURUSD.a
-   int foundPos = -1;
-   for(int k = 0; k < ArraySize(symbols); k++)
-   {
-      int p = StringFind(current, symbols[k], 0);
-      if(p >= 0)
-      {
-         foundPos = p;
-         symbolPrefix = StringSubstr(current, 0, p);
-         symbolSuffix = StringSubstr(current, p + 6, StringLen(current) - (p + 6));
-         break;
-      }
-   }
-
-   // Fallback compatibile con la logica precedente (solo suffisso, nessun prefisso)
-   if(foundPos < 0 && StringLen(current) > 6)
+   if(StringLen(current) > 6)
       symbolSuffix = StringSubstr(current, 6, StringLen(current) - 6);
 
    for(int i = 0; i < ArraySize(symbols); i++)
    {
-      string symbol = symbolPrefix + symbols[i] + symbolSuffix;
-      bool ok = CheckMarketWatch(symbol);
-
-      // Se la ricostruzione con prefisso/suffisso non è valida, prova il simbolo "pulito"
-      if(!ok)
-      {
-         symbol = symbols[i];
-         ok = CheckMarketWatch(symbol);
-      }
-
-      if(!ok)
+      string symbol = symbols[i] + symbolSuffix;
+      if(!CheckMarketWatch(symbol))
          return(false);
 
       symbolsWithSuffix[i] = symbol;
@@ -499,130 +471,45 @@ void CreaTabella()
 //+------------------------------------------------------------------+
 //|   Funzione aggiorna colori della tabella                         |
 //+------------------------------------------------------------------+
+void SetRowColors(const int OrdineMoneta,
+                  const color c0, const color c1, const color c2, const color c3,
+                  const color c4, const color c5, const color c6, const color c7)
+{
+   ObjectSetInteger(0, CellName(OrdineMoneta, 0), OBJPROP_BGCOLOR, c0);
+   ObjectSetInteger(0, CellName(OrdineMoneta, 1), OBJPROP_BGCOLOR, c1);
+   ObjectSetInteger(0, CellName(OrdineMoneta, 2), OBJPROP_BGCOLOR, c2);
+   ObjectSetInteger(0, CellName(OrdineMoneta, 3), OBJPROP_BGCOLOR, c3);
+   ObjectSetInteger(0, CellName(OrdineMoneta, 4), OBJPROP_BGCOLOR, c4);
+   ObjectSetInteger(0, CellName(OrdineMoneta, 5), OBJPROP_BGCOLOR, c5);
+   ObjectSetInteger(0, CellName(OrdineMoneta, 6), OBJPROP_BGCOLOR, c6);
+   ObjectSetInteger(0, CellName(OrdineMoneta, 7), OBJPROP_BGCOLOR, c7);
+}
+
 void aggiornacolori(int OrdineMoneta, double valoreAggiornare)
 {
    ObjectSetString(0, ValueName(OrdineMoneta), OBJPROP_TEXT, IntegerToString((int)valoreAggiornare));
    if(valoreAggiornare <= Ln5)
-   {
-      ObjectSetInteger(0, CellName(OrdineMoneta, 0), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 1), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 2), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 3), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 4), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 5), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 6), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 7), OBJPROP_BGCOLOR, clrRed);
-   }
+      SetRowColors(OrdineMoneta, clrWhite, clrWhite, clrWhite, clrWhite, clrRed, clrRed, clrRed, clrRed);
    else if(valoreAggiornare > Ln5 && valoreAggiornare <= Ln4)
-   {
-      ObjectSetInteger(0, CellName(OrdineMoneta, 0), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 1), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 2), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 3), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 4), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 5), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 6), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, CellName(OrdineMoneta, 7), OBJPROP_BGCOLOR, clrRed);
-   }
+      SetRowColors(OrdineMoneta, clrWhite, clrWhite, clrWhite, clrWhite, clrRed, clrRed, clrRed, clrRed);
    else if(valoreAggiornare > Ln4 && valoreAggiornare <= Ln3)
-   {
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(0), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(1), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(2), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(3), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(4), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(5), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(6), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(7), OBJPROP_BGCOLOR, clrWhite);
-   }
+      SetRowColors(OrdineMoneta, clrWhite, clrWhite, clrWhite, clrWhite, clrRed, clrRed, clrRed, clrWhite);
    else if(valoreAggiornare > Ln3 && valoreAggiornare <= Ln2)
-   {
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(0), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(1), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(2), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(3), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(4), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(5), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(6), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(7), OBJPROP_BGCOLOR, clrWhite);
-   }
+      SetRowColors(OrdineMoneta, clrWhite, clrWhite, clrWhite, clrWhite, clrRed, clrRed, clrWhite, clrWhite);
    else if(valoreAggiornare > Ln2 && valoreAggiornare <= Ln1)
-   {
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(0), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(1), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(2), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(3), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(4), OBJPROP_BGCOLOR, clrRed);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(5), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(6), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(7), OBJPROP_BGCOLOR, clrWhite);
-   }
+      SetRowColors(OrdineMoneta, clrWhite, clrWhite, clrWhite, clrWhite, clrRed, clrWhite, clrWhite, clrWhite);
    else if(valoreAggiornare >= Lp1 && valoreAggiornare < Lp2)
-   {
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(0), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(1), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(2), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(3), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(4), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(5), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(6), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(7), OBJPROP_BGCOLOR, clrWhite);
-   }
+      SetRowColors(OrdineMoneta, clrWhite, clrWhite, clrWhite, clrGreen, clrWhite, clrWhite, clrWhite, clrWhite);
    else if(valoreAggiornare >= Lp2 && valoreAggiornare < Lp3)
-   {
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(0), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(1), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(2), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(3), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(4), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(5), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(6), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(7), OBJPROP_BGCOLOR, clrWhite);
-   }
+      SetRowColors(OrdineMoneta, clrWhite, clrWhite, clrGreen, clrGreen, clrWhite, clrWhite, clrWhite, clrWhite);
    else if(valoreAggiornare >= Lp3 && valoreAggiornare < Lp4)
-   {
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(0), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(1), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(2), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(3), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(4), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(5), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(6), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(7), OBJPROP_BGCOLOR, clrWhite);
-   }
+      SetRowColors(OrdineMoneta, clrWhite, clrGreen, clrGreen, clrGreen, clrWhite, clrWhite, clrWhite, clrWhite);
    else if(valoreAggiornare >= Lp4 && valoreAggiornare < Lp5)
-   {
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(0), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(1), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(2), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(3), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(4), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(5), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(6), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(7), OBJPROP_BGCOLOR, clrWhite);
-   }
+      SetRowColors(OrdineMoneta, clrGreen, clrGreen, clrGreen, clrGreen, clrWhite, clrWhite, clrWhite, clrWhite);
    else if(valoreAggiornare >= Lp5)
-   {
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(0), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(1), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(2), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(3), OBJPROP_BGCOLOR, clrGreen);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(4), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(5), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(6), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(7), OBJPROP_BGCOLOR, clrWhite);
-   }
+      SetRowColors(OrdineMoneta, clrGreen, clrGreen, clrGreen, clrGreen, clrWhite, clrWhite, clrWhite, clrWhite);
    else
-   {
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(0), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(1), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(2), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(3), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(4), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(5), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(6), OBJPROP_BGCOLOR, clrWhite);
-      ObjectSetInteger(0, Currencies[OrdineMoneta] + IntegerToString(7), OBJPROP_BGCOLOR, clrWhite);
-   }
+      SetRowColors(OrdineMoneta, clrWhite, clrWhite, clrWhite, clrWhite, clrWhite, clrWhite, clrWhite, clrWhite);
 }
 
 //+------------------------------------------------------------------+
