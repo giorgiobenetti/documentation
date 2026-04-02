@@ -69,7 +69,7 @@ double Lp1 = 5, Lp2 = 10, Lp3 = 15, Lp4 = 20, Lp5 = 25;
 #define NZDCHF 22
 #define NZDJPY 23
 #define NZDUSD 24
-#define USDCAD 26
+#define USDCAD 25
 #define USDCHF 26
 #define USDJPY 27
 
@@ -90,6 +90,29 @@ void DeleteObjectsByPrefix(const string prefix)
 double MAValue(const int index, const int shift)
 {
    return iMA(symbolsWithSuffix[index], PERIOD_CURRENT, ma_period_, 0, MODE_LWMA, PRICE_CLOSE, shift);
+}
+
+bool BuildRelRatios(const int shift, double &rel[])
+{
+   for(int p = 0; p < 28; p++)
+   {
+      double now  = MAValue(p, shift);
+      double prev = MAValue(p, shift + ma_delta);
+      if(!MathIsValidNumber(now) || !MathIsValidNumber(prev) || now <= 0.0 || prev <= 0.0)
+         return(false);
+      rel[p] = now / prev;
+   }
+   return(true);
+}
+
+void ResetTableToNeutral()
+{
+   for(int i = 0; i < 8; i++)
+   {
+      ObjectSetString(0, "Valore" + Currencies[i], OBJPROP_TEXT, "--");
+      for(int j = 0; j < 8; j++)
+         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_BGCOLOR, clrWhite);
+   }
 }
 
 //--- License check (date + server) — NON intrusivo
@@ -177,6 +200,7 @@ int OnInit()
 
    SetVariablesBasedOnTimeframe();
    CreaTabella();
+   ResetTableToNeutral();
    return(INIT_SUCCEEDED);
 }
 
@@ -222,6 +246,7 @@ int OnCalculate(const int rates_total,
       {
          Print(__FUNCTION__, ": ", symbolsWithSuffix[i], " Non pronto");
          CheckLoadHistory(symbolsWithSuffix[i], PERIOD_CURRENT, ma_period_ + ma_delta + 50);
+         ResetTableToNeutral();
          return(0);
       }
       minBars = (int)MathMin(minBars, barsCount);
@@ -234,87 +259,97 @@ int OnCalculate(const int rates_total,
       limit = rates_total - prev_calculated + 1;
 
    if(limit <= 0)
+   {
+      ResetTableToNeutral();
       return(rates_total);
+   }
 
    for(int i = 0; i < limit; i++)
    {
-      A1 = MAValue(EURAUD, i) / MAValue(EURAUD, i + ma_delta);  // EURAUD*
-      A2 = MAValue(GBPAUD, i) / MAValue(GBPAUD, i + ma_delta);  // GBPAUD*
-      A3 = MAValue(AUDNZD, i) / MAValue(AUDNZD, i + ma_delta);  // AUDNZD
-      A4 = MAValue(AUDUSD, i) / MAValue(AUDUSD, i + ma_delta);  // AUDUSD
-      A5 = MAValue(AUDCAD, i) / MAValue(AUDCAD, i + ma_delta);  // AUDCAD
-      A6 = MAValue(AUDCHF, i) / MAValue(AUDCHF, i + ma_delta);  // AUDCHF
-      A7 = MAValue(AUDJPY, i) / MAValue(AUDJPY, i + ma_delta);  // AUDJPY
+      double rel[28];
+      if(!BuildRelRatios(i, rel))
+      {
+         ResetTableToNeutral();
+         return(0);
+      }
+
+      A1 = rel[EURAUD];  // EURAUD*
+      A2 = rel[GBPAUD];  // GBPAUD*
+      A3 = rel[AUDNZD];  // AUDNZD
+      A4 = rel[AUDUSD];  // AUDUSD
+      A5 = rel[AUDCAD];  // AUDCAD
+      A6 = rel[AUDCHF];  // AUDCHF
+      A7 = rel[AUDJPY];  // AUDJPY
       AUD = (1 / A1 * 1 / A2 * A3 * A4 * A5 * A6 * A7) - 1;
       AUDx[i] = AUD;
 
-      A1 = MAValue(EURCAD, i) / MAValue(EURCAD, i + ma_delta);  // EURCAD*
-      A2 = MAValue(GBPCAD, i) / MAValue(GBPCAD, i + ma_delta);  // GBPCAD*
-      A3 = MAValue(AUDCAD, i) / MAValue(AUDCAD, i + ma_delta);  // AUDCAD*
-      A4 = MAValue(NZDCAD, i) / MAValue(NZDCAD, i + ma_delta);  // NZDCAD*
-      A5 = MAValue(USDCAD, i) / MAValue(USDCAD, i + ma_delta);  // USDCAD*
-      A6 = MAValue(CADCHF, i) / MAValue(CADCHF, i + ma_delta);  // CADCHF
-      A7 = MAValue(CADJPY, i) / MAValue(CADJPY, i + ma_delta);  // CADJPY
+      A1 = rel[EURCAD];  // EURCAD*
+      A2 = rel[GBPCAD];  // GBPCAD*
+      A3 = rel[AUDCAD];  // AUDCAD*
+      A4 = rel[NZDCAD];  // NZDCAD*
+      A5 = rel[USDCAD];  // USDCAD*
+      A6 = rel[CADCHF];  // CADCHF
+      A7 = rel[CADJPY];  // CADJPY
       CAD = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * A6 * A7) - 1;
       CADx[i] = CAD;
 
-      A1 = MAValue(EURCHF, i) / MAValue(EURCHF, i + ma_delta);  // EURCHF*
-      A2 = MAValue(GBPCHF, i) / MAValue(GBPCHF, i + ma_delta);  // GBPCHF*
-      A3 = MAValue(AUDCHF, i) / MAValue(AUDCHF, i + ma_delta);  // AUDCHF*
-      A4 = MAValue(NZDCHF, i) / MAValue(NZDCHF, i + ma_delta);  // NZDCHF*
-      A5 = MAValue(USDCHF, i) / MAValue(USDCHF, i + ma_delta);  // USDCHF*
-      A6 = MAValue(CADCHF, i) / MAValue(CADCHF, i + ma_delta);  // CADCHF*
-      A7 = MAValue(CHFJPY, i) / MAValue(CHFJPY, i + ma_delta);  // CHFJPY
+      A1 = rel[EURCHF];  // EURCHF*
+      A2 = rel[GBPCHF];  // GBPCHF*
+      A3 = rel[AUDCHF];  // AUDCHF*
+      A4 = rel[NZDCHF];  // NZDCHF*
+      A5 = rel[USDCHF];  // USDCHF*
+      A6 = rel[CADCHF];  // CADCHF*
+      A7 = rel[CHFJPY];  // CHFJPY
       CHF = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * 1 / A6 * A7) - 1;
       CHFx[i] = CHF;
 
-      A1 = MAValue(EURGBP, i) / MAValue(EURGBP, i + ma_delta);  // EURGBP
-      A2 = MAValue(EURAUD, i) / MAValue(EURAUD, i + ma_delta);  // EURAUD
-      A3 = MAValue(EURNZD, i) / MAValue(EURNZD, i + ma_delta);  // EURNZD
-      A4 = MAValue(EURUSD, i) / MAValue(EURUSD, i + ma_delta);  // EURUSD
-      A5 = MAValue(EURCAD, i) / MAValue(EURCAD, i + ma_delta);  // EURCAD
-      A6 = MAValue(EURCHF, i) / MAValue(EURCHF, i + ma_delta);  // EURCHF
-      A7 = MAValue(EURJPY, i) / MAValue(EURJPY, i + ma_delta);  // EURJPY
+      A1 = rel[EURGBP];  // EURGBP
+      A2 = rel[EURAUD];  // EURAUD
+      A3 = rel[EURNZD];  // EURNZD
+      A4 = rel[EURUSD];  // EURUSD
+      A5 = rel[EURCAD];  // EURCAD
+      A6 = rel[EURCHF];  // EURCHF
+      A7 = rel[EURJPY];  // EURJPY
       EUR = (A1 * A2 * A3 * A4 * A5 * A6 * A7) - 1;
       EURx[i] = EUR;
 
-      A1 = MAValue(EURGBP, i) / MAValue(EURGBP, i + ma_delta);  // EURGBP*
-      A2 = MAValue(GBPAUD, i) / MAValue(GBPAUD, i + ma_delta);  // GBPAUD
-      A3 = MAValue(GBPNZD, i) / MAValue(GBPNZD, i + ma_delta);  // GBPNZD
-      A4 = MAValue(GBPUSD, i) / MAValue(GBPUSD, i + ma_delta);  // GBPUSD
-      A5 = MAValue(GBPCAD, i) / MAValue(GBPCAD, i + ma_delta);  // GBPCAD
-      A6 = MAValue(GBPCHF, i) / MAValue(GBPCHF, i + ma_delta);  // GBPCHF
-      A7 = MAValue(GBPJPY, i) / MAValue(GBPJPY, i + ma_delta);  // GBPJPY
+      A1 = rel[EURGBP];  // EURGBP*
+      A2 = rel[GBPAUD];  // GBPAUD
+      A3 = rel[GBPNZD];  // GBPNZD
+      A4 = rel[GBPUSD];  // GBPUSD
+      A5 = rel[GBPCAD];  // GBPCAD
+      A6 = rel[GBPCHF];  // GBPCHF
+      A7 = rel[GBPJPY];  // GBPJPY
       GBP = (1 / A1 * A2 * A3 * A4 * A5 * A6 * A7) - 1;
       GBPx[i] = GBP;
 
-      A1 = MAValue(EURJPY, i) / MAValue(EURJPY, i + ma_delta);  // EURJPY*
-      A2 = MAValue(GBPJPY, i) / MAValue(GBPJPY, i + ma_delta);  // GBPJPY*
-      A3 = MAValue(AUDJPY, i) / MAValue(AUDJPY, i + ma_delta);  // AUDJPY*
-      A4 = MAValue(NZDJPY, i) / MAValue(NZDJPY, i + ma_delta);  // NZDJPY*
-      A5 = MAValue(USDJPY, i) / MAValue(USDJPY, i + ma_delta);  // USDJPY*
-      A6 = MAValue(CADJPY, i) / MAValue(CADJPY, i + ma_delta);  // CADJPY*
-      A7 = MAValue(CHFJPY, i) / MAValue(CHFJPY, i + ma_delta);  // CHFJPY*
+      A1 = rel[EURJPY];  // EURJPY*
+      A2 = rel[GBPJPY];  // GBPJPY*
+      A3 = rel[AUDJPY];  // AUDJPY*
+      A4 = rel[NZDJPY];  // NZDJPY*
+      A5 = rel[USDJPY];  // USDJPY*
+      A6 = rel[CADJPY];  // CADJPY*
+      A7 = rel[CHFJPY];  // CHFJPY*
       JPY = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * 1 / A5 * 1 / A6 * 1 / A7) - 1;
       JPYx[i] = JPY;
 
-      A1 = MAValue(EURNZD, i) / MAValue(EURNZD, i + ma_delta);  // EURNZD*
-      A2 = MAValue(GBPNZD, i) / MAValue(GBPNZD, i + ma_delta);  // GBPNZD*
-      A3 = MAValue(AUDNZD, i) / MAValue(AUDNZD, i + ma_delta);  // AUDNZD*
-      A4 = MAValue(NZDUSD, i) / MAValue(NZDUSD, i + ma_delta);  // NZDUSD
-      A5 = MAValue(NZDCAD, i) / MAValue(NZDCAD, i + ma_delta);  // NZDCAD
-      A6 = MAValue(NZDCHF, i) / MAValue(NZDCHF, i + ma_delta);  // NZDCHF
-      A7 = MAValue(NZDJPY, i) / MAValue(NZDJPY, i + ma_delta);  // NZDJPY
+      A1 = rel[EURNZD];  // EURNZD*
+      A2 = rel[GBPNZD];  // GBPNZD*
+      A3 = rel[AUDNZD];  // AUDNZD*
+      A4 = rel[NZDUSD];  // NZDUSD
+      A5 = rel[NZDCAD];  // NZDCAD
+      A6 = rel[NZDCHF];  // NZDCHF
+      A7 = rel[NZDJPY];  // NZDJPY
       NZD = (1 / A1 * 1 / A2 * 1 / A3 * A4 * A5 * A6 * A7) - 1;
       NZDx[i] = NZD;
 
-      A1 = MAValue(EURUSD, i) / MAValue(EURUSD, i + ma_delta);  // EURUSD*
-      A2 = MAValue(GBPUSD, i) / MAValue(GBPUSD, i + ma_delta);  // GBPUSD*
-      A3 = MAValue(AUDUSD, i) / MAValue(AUDUSD, i + ma_delta);  // AUDUSD*
-      A4 = MAValue(NZDUSD, i) / MAValue(NZDUSD, i + ma_delta);  // NZDUSD*
-      A5 = MAValue(USDCAD, i) / MAValue(USDCAD, i + ma_delta);  // USDCAD
-      A6 = MAValue(USDCHF, i) / MAValue(USDCHF, i + ma_delta);  // USDCHF
-      A7 = MAValue(USDJPY, i) / MAValue(USDJPY, i + ma_delta);  // USDJPY
+      A1 = rel[EURUSD];  // EURUSD*
+      A2 = rel[GBPUSD];  // GBPUSD*
+      A3 = rel[AUDUSD];  // AUDUSD*
+      A4 = rel[NZDUSD];  // NZDUSD*
+      A5 = rel[USDCAD];  // USDCAD
+      A6 = rel[USDCHF];  // USDCHF
+      A7 = rel[USDJPY];  // USDJPY
       USD = (1 / A1 * 1 / A2 * 1 / A3 * 1 / A4 * A5 * A6 * A7) - 1;
       USDx[i] = USD;
    }
@@ -401,7 +436,7 @@ void CreaTabella()
          ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_YDISTANCE, yTabella + spazioy * i);
          ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_XSIZE, widthTabella);
          ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_YSIZE, heightTabella);
-         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_BGCOLOR, clrGreen);
+         ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_BGCOLOR, clrWhite);
          ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_BORDER_TYPE, BORDER_FLAT);
          ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_COLOR, clrBlack);
          ObjectSetInteger(0, Currencies[i] + IntegerToString(j), OBJPROP_STYLE, STYLE_SOLID);
