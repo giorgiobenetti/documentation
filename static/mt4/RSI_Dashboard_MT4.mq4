@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//|                     RSI Dashboard (MT4 - LICENSE MESSAGE)        |
+//|                    RSI Dashboard (MT4 - NO LOCK)                 |
 //|                         Powered by Investire.biz                 |
 //+------------------------------------------------------------------+
 #property strict
@@ -14,18 +14,12 @@ input int divergenceLookbackBars = 200;
 input int divergencePivotLeft = 2;
 input int divergencePivotRight = 2;
 
-// --- LICENZA
-input datetime expirationDate = D'2026.05.31 23:59:59';
-input string allowedServer = "IG-LIVE";
-
 //-------------------- TESTI ----------------------------------------
 string title = "DASHBOARD RSI - IG LIVE";
 string poweredByText = "Powered by Investire.biz";
-string supportEmail = "info@investire.biz";
 
 //-------------------- INTERNAL -------------------------------------
 string PREFIX = "RSIDASH_";
-bool g_blocked = false;
 color COLOR_BRAND_GREEN = C'87,190,124';   // #57be7c
 color COLOR_SIGNAL_GREEN = C'130,230,170'; // verde chiaro per strumenti
 
@@ -43,20 +37,6 @@ long g_oldShowOHLC = true;
 long g_oldShowBid = true;
 long g_oldShowAsk = true;
 long g_oldShowPeriodSep = true;
-
-//+------------------------------------------------------------------+
-//| Utility: format dd/mm/yyyy                                       |
-//+------------------------------------------------------------------+
-string FormatDateDDMMYYYY(datetime t)
-{
-   int d = TimeDay(t);
-   int m = TimeMonth(t);
-   int y = TimeYear(t);
-
-   string sd = (d < 10 ? "0" : "") + IntegerToString(d);
-   string sm = (m < 10 ? "0" : "") + IntegerToString(m);
-   return(sd + "/" + sm + "/" + IntegerToString(y));
-}
 
 string TfToString(ENUM_TIMEFRAMES tf)
 {
@@ -387,40 +367,9 @@ void DrawCenterText(string name, string text, int fontSize, color c, int yOffset
    ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_CENTER);
 }
 
-//-------------------- License screens ------------------------------
-void ShowLicenseExpired()
-{
-   DeleteMyObjects();
-   g_blocked = true;
-   DrawBackgroundPanel();
-
-   string d = FormatDateDDMMYYYY(expirationDate);
-
-   DrawCenterText("ERR1", "LA LICENZA PER LA TUA DASHBOARD E SCADUTA", 24, clrRed,  -50);
-   DrawCenterText("ERR2", "Scaduta il giorno " + d,                     16, clrBlack, 0);
-   DrawCenterText("ERR3", "Scrivi a " + supportEmail,                   16, clrBlue,  40);
-
-   ChartRedraw();
-}
-
-void ShowServerNotAllowed(string server)
-{
-   DeleteMyObjects();
-   g_blocked = true;
-   DrawBackgroundPanel();
-
-   DrawCenterText("ERR1", "SERVER NON AUTORIZZATO",                      24, clrRed,  -50);
-   DrawCenterText("ERR2", "Server rilevato: " + server,                  16, clrBlack, 0);
-   DrawCenterText("ERR3", "Scrivi a " + supportEmail,                    16, clrBlue,  40);
-
-   ChartRedraw();
-}
-
 //-------------------- Dashboard update -----------------------------
 void UpdateDashboard()
 {
-   if(g_blocked) return;
-
    DrawBackgroundPanel();
 
    int chartW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
@@ -507,24 +456,10 @@ void UpdateDashboard()
 int OnInit()
 {
    DeleteMyObjects();
-   g_blocked = false;
 
    SaveChartStyle();
    ApplyDashboardChartStyle();
    DrawBackgroundPanel();
-
-   if(TimeCurrent() > expirationDate)
-   {
-      ShowLicenseExpired();
-      return(INIT_SUCCEEDED);
-   }
-
-   string currentBroker = AccountServer();
-   if(StringFind(currentBroker, allowedServer) < 0)
-   {
-      ShowServerNotAllowed(currentBroker);
-      return(INIT_SUCCEEDED);
-   }
 
    DrawLabel("title", 10, 10, title, 18, COLOR_BRAND_GREEN);
    DrawLabel("powered_by", 10, 35, poweredByText, 9, clrGray);
@@ -548,36 +483,12 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
 {
    if(id == CHARTEVENT_CHART_CHANGE)
    {
-      // Ridisegna pannello/schermata in caso di resize o cambio grafico
-      if(g_blocked)
-      {
-         if(TimeCurrent() > expirationDate) ShowLicenseExpired();
-         else
-         {
-            string currentBroker = AccountServer();
-            if(StringFind(currentBroker, allowedServer) < 0) ShowServerNotAllowed(currentBroker);
-         }
-      }
-      else
-      {
-         UpdateDashboard();
-      }
+      // Ridisegna dashboard in caso di resize o cambio grafico
+      UpdateDashboard();
       return;
    }
 
    if(id != CHARTEVENT_OBJECT_CLICK) return;
-
-   // se bloccato, ridisegna (utile dopo resize)
-   if(g_blocked)
-   {
-      if(TimeCurrent() > expirationDate) ShowLicenseExpired();
-      else
-      {
-         string currentBroker2 = AccountServer();
-         if(StringFind(currentBroker2, allowedServer) < 0) ShowServerNotAllowed(currentBroker2);
-      }
-      return;
-   }
 
    // accettiamo solo click su oggetti nostri
    if(StringFind(sparam, PREFIX, 0) != 0) return;
