@@ -46,15 +46,26 @@ public without sharing class CaseEmailComposerController {
             throw new AuraHandledException('LANGUAGE_REQUIRED');
         }
 
-        Reply_Email_Mapping__mdt mapping = resolveMapping(c.Company__c, isForecaster, languageCode);
+        String companyKey = c.Company__c.trim();
+        Reply_Email_Mapping__mdt mapping = resolveMapping(companyKey, isForecaster, languageCode);
 
         EmailTemplate template = [
-            SELECT Id, DeveloperName
+            SELECT Id, DeveloperName, TemplateType
             FROM EmailTemplate
             WHERE DeveloperName = :mapping.Template_Developer_Name__c AND IsActive = TRUE
             WITH USER_MODE
             LIMIT 1
         ];
+
+        if (!isSupportedClassicTemplate(template.TemplateType)) {
+            throw new AuraHandledException(
+                'Template "' +
+                    mapping.Template_Developer_Name__c +
+                    '" has type "' +
+                    template.TemplateType +
+                    '". Use a Classic template (text, html, custom, or visualforce). Lightning Email Templates are not supported by this merge path.'
+            );
+        }
 
         Messaging.SingleEmailMessage rendered = Messaging.renderStoredEmailTemplate(
             String.valueOf(template.Id),
@@ -71,31 +82,34 @@ public without sharing class CaseEmailComposerController {
         }
 
         ComposerDefaults out = new ComposerDefaults();
-        out.fromAddress = mapping.From_Address__c;
+        out.fromAddress = mapping.From_Address__c != null ? mapping.From_Address__c.trim() : null;
         out.toAddress = c.SuppliedEmail.trim();
         out.subject = buildReplySubject(c.Subject, rendered.getSubject());
         out.htmlBody = mergedBody;
         return out;
     }
 
-    private static Reply_Email_Mapping__mdt resolveMapping(String companyPicklistValue, Boolean isForecaster, String languageCode) {
-        // NOPMD(ApexCRUDViolation) - Custom Metadata is subscriber configuration, not CRUD-governed business data
-        List<Reply_Email_Mapping__mdt> rows = [
-            SELECT From_Address__c, Template_Developer_Name__c, Language_Code__c
-            FROM Reply_Email_Mapping__mdt
-            WHERE Picklist_Value__c = :companyPicklistValue
-        ];
-
-        if (rows.isEmpty()) {
-            throw new AuraHandledException(
-                'No Reply_Email_Mapping__mdt row found for Company "' + companyPicklistValue + '".'
-            );
+    private static Boolean isSupportedClassicTemplate(String templateType) {
+        if (String.isBlank(templateType)) {
+            return true;
         }
+        String t = templateType.toLowerCase();
+        return t == 'text' || t == 'html' || t == 'custom' || t == 'visualforce';
+    }
+
+    private static Reply_Email_Mapping__mdt resolveMapping(String companyPicklistValue, Boolean isForecaster, String languageCode) {
+        String company = companyPicklistValue.trim();
 
         if (isForecaster) {
             String lang = languageCode.trim();
+            // NOPMD(ApexCRUDViolation) - Custom Metadata is subscriber configuration
+            List<Reply_Email_Mapping__mdt> rows = [
+                SELECT DeveloperName, Picklist_Value__c, From_Address__c, Template_Developer_Name__c, Language_Code__c
+                FROM Reply_Email_Mapping__mdt
+                WHERE Picklist_Value__c = :company AND Language_Code__c != NULL AND Language_Code__c != ''
+            ];
             for (Reply_Email_Mapping__mdt row : rows) {
-                if (row.Language_Code__c != null && row.Language_Code__c.equalsIgnoreCase(lang)) {
+                if (row.Language_Code__c != null && row.Language_Code__c.trim().equalsIgnoreCase(lang)) {
                     return row;
                 }
             }
@@ -104,17 +118,28 @@ public without sharing class CaseEmailComposerController {
             );
         }
 
-        for (Reply_Email_Mapping__mdt row : rows) {
-            if (String.isBlank(row.Language_Code__c)) {
-                return row;
-            }
-        }
+        // NOPMD(ApexCRUDViolation) - Custom Metadata is subscriber configuration
+        List<Reply_Email_Mapping__mdt> defaultRows = [
+            SELECT DeveloperName, Picklist_Value__c, From_Address__c, Template_Developer_Name__c, Language_Code__c
+            FROM Reply_Email_Mapping__mdt
+            WHERE Picklist_Value__c = :company AND (Language_Code__c = NULL OR Language_Code__c = '')
+        ];
 
-        throw new AuraHandledException(
-            'No default (blank language) Reply_Email_Mapping__mdt row found for Company "' +
-                companyPicklistValue +
-                '".'
-        );
+        if (defaultRows.isEmpty()) {
+            throw new AuraHandledException(
+                'No Reply_Email_Mapping__mdt default row (blank Language) for Company "' +
+                    company +
+                    '". Check Picklist_Value__c matches the Case picklist API value exactly.'
+            );
+        }
+        if (defaultRows.size() > 1) {
+            throw new AuraHandledException(
+                'Multiple default Reply_Email_Mapping__mdt rows (blank Language) for Company "' +
+                    company +
+                    '". Leave exactly one row per company with blank Language_Code__c.'
+            );
+        }
+        return defaultRows[0];
     }
 
     private static String buildReplySubject(String caseSubject, String templateSubject) {
