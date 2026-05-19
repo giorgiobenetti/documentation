@@ -5,6 +5,9 @@
 public with sharing class CaseEmailComposerController {
     public static final String COMPANY_FORECASTER = 'Forecaster.biz';
 
+    /**
+     * Serializable defaults for the Lightning email quick action (encodeDefaultFieldValues).
+     */
     public class ComposerDefaults {
         @AuraEnabled public String fromAddress;
         @AuraEnabled public String toAddress;
@@ -12,6 +15,11 @@ public with sharing class CaseEmailComposerController {
         @AuraEnabled public String htmlBody;
     }
 
+    /**
+     * Loads Case data, resolves template + org-wide From mapping, and returns merged HTML for the composer.
+     * @param caseId Case record Id
+     * @param languageCode For Forecaster.biz only: {@code IT} or {@code EN}; otherwise null
+     */
     @AuraEnabled
     public static ComposerDefaults getComposerDefaults(Id caseId, String languageCode) {
         if (caseId == null) {
@@ -71,6 +79,7 @@ public with sharing class CaseEmailComposerController {
     }
 
     private static Reply_Email_Mapping__mdt resolveMapping(String companyPicklistValue, Boolean isForecaster, String languageCode) {
+        // NOPMD(ApexCRUDViolation) - Custom Metadata is subscriber configuration, not CRUD-governed business data
         List<Reply_Email_Mapping__mdt> rows = [
             SELECT From_Address__c, Template_Developer_Name__c, Language_Code__c
             FROM Reply_Email_Mapping__mdt
