@@ -2,7 +2,7 @@
  * Prepares default values for the standard Case Send Email quick action (Lightning composer).
  * Mapping rows live in Custom Metadata Type Reply_Email_Mapping__mdt.
  */
-public with sharing class CaseEmailComposerController {
+public without sharing class CaseEmailComposerController {
     public static final String COMPANY_FORECASTER = 'Forecaster.biz';
 
     /**
@@ -30,7 +30,7 @@ public with sharing class CaseEmailComposerController {
             SELECT Id, Company__c, SuppliedEmail, Subject
             FROM Case
             WHERE Id = :caseId
-            WITH SECURITY_ENFORCED
+            WITH USER_MODE
             LIMIT 1
         ];
 
@@ -52,7 +52,7 @@ public with sharing class CaseEmailComposerController {
             SELECT Id, DeveloperName
             FROM EmailTemplate
             WHERE DeveloperName = :mapping.Template_Developer_Name__c AND IsActive = TRUE
-            WITH SECURITY_ENFORCED
+            WITH USER_MODE
             LIMIT 1
         ];
 
