@@ -1,0 +1,58 @@
+<template>
+    <lightning-card title="Risposta email guidata" icon-name="standard:email">
+        <div class="slds-p-around_small">
+            <p class="slds-text-body_small slds-m-bottom_small">
+                Apre il composer email standard del Case con mittente, destinatario, oggetto (RE:) e corpo del
+                template già impostati in base a Company__c.
+            </p>
+            <lightning-button
+                variant="brand"
+                label="Rispondi con template"
+                title="Apre Send Email con From, To, Subject e body precompilati"
+                onclick={handleOpenClick}
+                disabled={busy}
+            ></lightning-button>
+        </div>
+    </lightning-card>
+
+    <template if:true={showLangModal}>
+        <section
+            role="dialog"
+            tabindex="-1"
+            aria-modal="true"
+            aria-labelledby="lang-modal-heading"
+            class="slds-modal slds-fade-in-open"
+        >
+            <div class="slds-modal__container">
+                <header class="slds-modal__header">
+                    <h2 id="lang-modal-heading" class="slds-modal__title slds-hyphenate">Lingua template (Forecaster.biz)</h2>
+                </header>
+                <div class="slds-modal__content slds-p-around_medium" id="lang-modal-content">
+                    <p class="slds-m-bottom_medium">Scegli la lingua del template prima di aprire il composer.</p>
+                    <div class="slds-grid slds-wrap slds-gutters">
+                        <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2">
+                            <lightning-button
+                                stretch
+                                variant="brand"
+                                label="Italiano"
+                                onclick={handleLanguageIt}
+                            ></lightning-button>
+                        </div>
+                        <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2">
+                            <lightning-button
+                                stretch
+                                variant="neutral"
+                                label="English"
+                                onclick={handleLanguageEn}
+                            ></lightning-button>
+                        </div>
+                    </div>
+                </div>
+                <footer class="slds-modal__footer">
+                    <lightning-button variant="neutral" label="Annulla" onclick={handleCloseModal}></lightning-button>
+                </footer>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+</template>
