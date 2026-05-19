@@ -43,4 +43,5 @@
 tap-testdir*/
 !/cli/
 !/force-app/
+!/manifest/
 !/sfdx-project.json

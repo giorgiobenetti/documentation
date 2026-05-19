@@ -23,6 +23,22 @@ La mappatura è configurabile senza codice tramite **Custom Metadata** `Reply_Em
 sf project deploy start --source-dir force-app --target-org <alias>
 ```
 
+### Deploy solo questa funzionalità (consigliato se il progetto contiene altro)
+
+Puoi rilasciare **solo** Apex, LWC, Custom Metadata e permission set del Case email usando il manifest:
+
+```bash
+sf project deploy start --manifest manifest/package-case-email-reply-only.xml --target-org <alias>
+```
+
+In alternativa, dalla root del progetto, punta a **una cartella** (es. solo un LWC dopo una modifica):
+
+```bash
+sf project deploy start --source-dir force-app/main/default/lwc/caseSmartReplyButton --target-org <alias>
+```
+
+Regola pratica: se deployi **solo** il bundle LWC, l’Apex controller deve **già esistere** nell’org (o va deployato nello stesso changeset / nello stesso comando). Stesso discorso per i record **Custom Metadata** e il **tipo** MDT.
+
 Assegna il permission set **Case Smart Email Reply** agli agenti (oltre ai permessi Case/email già previsti).
 
 ## Pagina Lightning
