@@ -31,20 +31,21 @@ private class CaseEmailDefaultsHandlerTest {
         System.assertEquals('info@investire.biz', CaseEmailDefaultsHandler.resolveFromAddress('Investire.biz'));
         System.assertEquals('info@forecaster.biz', CaseEmailDefaultsHandler.resolveFromAddress('Forecaster.biz'));
         System.assertEquals('info@itcup.it', CaseEmailDefaultsHandler.resolveFromAddress('It Cup'));
+        System.assertEquals('info@itcup.it', CaseEmailDefaultsHandler.resolveFromAddress('  It Cup  '));
     }
 
     @IsTest
     static void applyDefaults_noOpWhenNullInputs() {
         EmailMessage em = new EmailMessage();
-        CaseEmailDefaultsHandler.applyDefaults(null, em);
+        System.assertEquals(null, CaseEmailDefaultsHandler.applyDefaults(null, em));
 
         Case c = new Case(Subject = 't', Status = 'New', Origin = 'Email');
         insert c;
-        CaseEmailDefaultsHandler.applyDefaults(c.Id, null);
+        System.assertEquals(null, CaseEmailDefaultsHandler.applyDefaults(c.Id, null));
     }
 
     @IsTest
-    static void applyDefaults_setsValidatedFromAddress_investire() {
+    static void applyDefaults_returnsFrom_investire() {
         Case c = new Case(
             Subject = 't',
             Status = 'New',
@@ -53,13 +54,19 @@ private class CaseEmailDefaultsHandlerTest {
         );
         insert c;
 
+        Case row = [SELECT Company__c FROM Case WHERE Id = :c.Id];
+        System.assertEquals(
+            'info@investire.biz',
+            CaseEmailDefaultsHandler.resolveFromAddress(row.Company__c),
+            'Company__c on Case must match picklist value exactly after insert. Got: [' + row.Company__c + ']'
+        );
+
         EmailMessage em = new EmailMessage();
-        CaseEmailDefaultsHandler.applyDefaults(c.Id, em);
-        System.assertEquals('info@investire.biz', em.ValidatedFromAddress);
+        System.assertEquals('info@investire.biz', CaseEmailDefaultsHandler.applyDefaults(row.Id, em));
     }
 
     @IsTest
-    static void applyDefaults_setsValidatedFromAddress_forecaster() {
+    static void applyDefaults_returnsFrom_forecaster() {
         Case c = new Case(
             Subject = 't',
             Status = 'New',
@@ -68,13 +75,19 @@ private class CaseEmailDefaultsHandlerTest {
         );
         insert c;
 
+        Case row = [SELECT Company__c FROM Case WHERE Id = :c.Id];
+        System.assertEquals(
+            'info@forecaster.biz',
+            CaseEmailDefaultsHandler.resolveFromAddress(row.Company__c),
+            'Company__c on Case must match picklist value exactly after insert. Got: [' + row.Company__c + ']'
+        );
+
         EmailMessage em = new EmailMessage();
-        CaseEmailDefaultsHandler.applyDefaults(c.Id, em);
-        System.assertEquals('info@forecaster.biz', em.ValidatedFromAddress);
+        System.assertEquals('info@forecaster.biz', CaseEmailDefaultsHandler.applyDefaults(row.Id, em));
     }
 
     @IsTest
-    static void applyDefaults_setsValidatedFromAddress_itCup() {
+    static void applyDefaults_returnsFrom_itCup() {
         Case c = new Case(
             Subject = 't',
             Status = 'New',
@@ -83,18 +96,14 @@ private class CaseEmailDefaultsHandlerTest {
         );
         insert c;
 
-        EmailMessage em = new EmailMessage();
-        CaseEmailDefaultsHandler.applyDefaults(c.Id, em);
-        System.assertEquals('info@itcup.it', em.ValidatedFromAddress);
-    }
-
-    @IsTest
-    static void applyDefaults_leavesFromNullWhenCompanyUnknown() {
-        Case c = new Case(Subject = 't', Status = 'New', Origin = 'Email');
-        insert c;
+        Case row = [SELECT Company__c FROM Case WHERE Id = :c.Id];
+        System.assertEquals(
+            'info@itcup.it',
+            CaseEmailDefaultsHandler.resolveFromAddress(row.Company__c),
+            'Company__c on Case must match picklist value exactly after insert. Got: [' + row.Company__c + ']'
+        );
 
         EmailMessage em = new EmailMessage();
-        CaseEmailDefaultsHandler.applyDefaults(c.Id, em);
-        System.assertEquals(null, em.ValidatedFromAddress);
+        System.assertEquals('info@itcup.it', CaseEmailDefaultsHandler.applyDefaults(row.Id, em));
     }
 }

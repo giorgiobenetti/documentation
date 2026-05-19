@@ -38,9 +38,9 @@ global class CaseEmailDefaultsHandler implements QuickAction.QuickActionDefaults
     }
 
     @TestVisible
-    public static void applyDefaults(Id caseId, EmailMessage emailMessage) {
+    public static String applyDefaults(Id caseId, EmailMessage emailMessage) {
         if (caseId == null || emailMessage == null) {
-            return;
+            return null;
         }
 
         Case c = [
@@ -55,6 +55,7 @@ global class CaseEmailDefaultsHandler implements QuickAction.QuickActionDefaults
         if (fromAddress != null) {
             emailMessage.ValidatedFromAddress = fromAddress;
         }
+        return fromAddress;
     }
 
     @TestVisible
@@ -63,15 +64,17 @@ global class CaseEmailDefaultsHandler implements QuickAction.QuickActionDefaults
             return null;
         }
 
-        if (company == 'Investire.biz') {
+        String key = company.trim();
+
+        if (key == 'Investire.biz') {
             return 'info@investire.biz';
         }
 
-        if (company == 'Forecaster.biz') {
+        if (key == 'Forecaster.biz') {
             return 'info@forecaster.biz';
         }
 
-        if (company == 'It Cup') {
+        if (key == 'It Cup') {
             return 'info@itcup.it';
         }
 
