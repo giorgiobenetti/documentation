@@ -53,7 +53,9 @@ Il componente naviga verso `standard__quickAction` con `apiName: Case.SendEmail`
 
 ## Layout dell’azione Send Email
 
-I valori predefiniti da LWC rispettano i campi documentati per `encodeDefaultFieldValues` (`FromAddress`, `ToAddress`, `Subject`, `HTMLBody`, `RelatedToId`). Se un campo risulta **sola lettura** nel layout dell’azione email, Salesforce può ignorare il valore passato: mantieni **From**, **To**, **Subject** e **Body** modificabili nel layout dell’azione.
+I valori predefiniti da LWC rispettano i campi documentati per `encodeDefaultFieldValues` (`FromAddress`, `ToAddress`, `Subject`, `HtmlBody` / `HTMLBody`, `RelatedToId`). Se un campo risulta **sola lettura** nel layout dell’azione email, Salesforce **ignora** i valori passati: in particolare **Subject** e **corpo** non si precompilano. In Setup apri il layout dell’azione **Send Email** sul Case e assicurati che **From**, **To**, **Subject** e **Body** siano **modificabili** (non Read-Only). Vedi anche la guida Salesforce sugli attributi dell’azione email.
+
+Nel LWC usiamo la chiave **`HtmlBody`** (come negli esempi ufficiali) e azzeriamo **Cc/Bcc** espliciti per evitare che restino valori “appiccicati” dal composer precedente.
 
 ## Forecaster.biz: lingua
 

@@ -102,8 +102,11 @@ export default class CaseSmartReplyButton extends NavigationMixin(LightningEleme
             const defaultFieldValues = encodeDefaultFieldValues({
                 FromAddress: defaults.fromAddress,
                 ToAddress: defaults.toAddress,
+                CcAddress: '',
+                BccAddress: '',
                 Subject: defaults.subject,
-                HTMLBody: defaults.htmlBody,
+                // Salesforce doc examples use HtmlBody; some releases also accept HTMLBody.
+                HtmlBody: defaults.htmlBody,
                 RelatedToId: this.recordId
             });
 
