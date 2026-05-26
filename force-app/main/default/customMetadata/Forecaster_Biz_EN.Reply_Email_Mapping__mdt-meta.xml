@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomMetadata xmlns="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+    <label>Forecaster.biz EN</label>
+    <protected>false</protected>
+    <values>
+        <field>Picklist_Value__c</field>
+        <value xsi:type="xsd:string">Forecaster.biz</value>
+    </values>
+    <values>
+        <field>Language_Code__c</field>
+        <value xsi:type="xsd:string">EN</value>
+    </values>
+    <values>
+        <field>From_Address__c</field>
+        <value xsi:type="xsd:string">info@forecaster.biz</value>
+    </values>
+    <values>
+        <field>Template_Developer_Name__c</field>
+        <value xsi:type="xsd:string">REPLACE_Forecaster_EN_Template_DevName</value>
+    </values>
+</CustomMetadata>

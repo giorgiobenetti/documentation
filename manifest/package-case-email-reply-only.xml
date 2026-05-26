@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <types>
+        <members>CaseEmailComposerController</members>
+        <members>CaseEmailComposerControllerTest</members>
+        <name>ApexClass</name>
+    </types>
+    <types>
+        <members>caseSmartReplyButton</members>
+        <name>LightningComponentBundle</name>
+    </types>
+    <types>
+        <members>Reply_Email_Mapping__mdt</members>
+        <name>CustomObject</name>
+    </types>
+    <types>
+        <members>Reply_Email_Mapping__mdt.Investire_Biz</members>
+        <members>Reply_Email_Mapping__mdt.Forecaster_Biz_IT</members>
+        <members>Reply_Email_Mapping__mdt.Forecaster_Biz_EN</members>
+        <members>Reply_Email_Mapping__mdt.It_Cup</members>
+        <name>CustomMetadata</name>
+    </types>
+    <types>
+        <members>Case_Smart_Email_Reply</members>
+        <name>PermissionSet</name>
+    </types>
+    <version>60.0</version>
+</Package>

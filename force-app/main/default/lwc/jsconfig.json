@@ -1,0 +1,11 @@
+{
+    "compilerOptions": {
+        "experimentalDecorators": true,
+        "baseUrl": ".",
+        "paths": {
+            "*": ["*"]
+        },
+        "ignoreDeprecations": "6.0"
+    },
+    "include": ["**/*"]
+}

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <classAccesses>
+        <apexClass>CaseEmailComposerController</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
+    <description>Consente l&apos;uso del pulsante LWC Case Smart Reply (Apex per merge template).</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Case Smart Email Reply</label>
+</PermissionSet>
