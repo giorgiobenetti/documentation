@@ -10,6 +10,10 @@ input ENUM_TIMEFRAMES rsiTimeframeMain = PERIOD_H4;
 input ENUM_TIMEFRAMES rsiTimeframeSecondary = PERIOD_M15;
 input double overbought = 70.0;
 input double oversold = 30.0;
+input double h4ExtremeOverbought = 75.0;
+input double h4ExtremeOversold = 25.0;
+input double m15ExtremeOverbought = 85.0;
+input double m15ExtremeOversold = 15.0;
 input int divergenceLookbackBars = 200;
 input int divergencePivotLeft = 2;
 input int divergencePivotRight = 2;
@@ -22,6 +26,12 @@ string poweredByText = "Powered by Investire.biz";
 string PREFIX = "RSIDASH_";
 color COLOR_BRAND_GREEN = C'87,190,124';   // #57be7c
 color COLOR_SIGNAL_GREEN = C'130,230,170'; // verde chiaro per strumenti
+color COLOR_H4_OVER = C'220,60,60';
+color COLOR_H4_UNDER = C'64,132,255';
+color COLOR_M15_OVER = C'255,140,0';
+color COLOR_M15_UNDER = C'165,80,220';
+color COLOR_BOTH_OVER = C'255,0,170';
+color COLOR_BOTH_UNDER = C'0,170,110';
 
 // snapshot stile grafico originale
 bool g_chartStyleSaved = false;
@@ -74,6 +84,41 @@ color GetRsiStateColor(double value)
    if(value >= overbought) return(clrRed);
    if(value <= oversold)   return(COLOR_SIGNAL_GREEN);
    return(clrBlack);
+}
+
+int GetExtremeSignal(double value, double levelOver, double levelUnder)
+{
+   if(value >= levelOver) return(1);
+   if(value <= levelUnder) return(-1);
+   return(0);
+}
+
+color GetH4ExtremeColor(int signal)
+{
+   if(signal > 0) return(COLOR_H4_OVER);
+   if(signal < 0) return(COLOR_H4_UNDER);
+   return(clrBlack);
+}
+
+color GetM15ExtremeColor(int signal)
+{
+   if(signal > 0) return(COLOR_M15_OVER);
+   if(signal < 0) return(COLOR_M15_UNDER);
+   return(clrBlack);
+}
+
+color GetBothExtremeColor(int signal)
+{
+   if(signal > 0) return(COLOR_BOTH_OVER);
+   if(signal < 0) return(COLOR_BOTH_UNDER);
+   return(clrBlack);
+}
+
+string GetBothExtremeTag(int signal)
+{
+   if(signal > 0) return("BOTH HI");
+   if(signal < 0) return("BOTH LO");
+   return("-");
 }
 
 bool IsSwingLow(const string symbol, ENUM_TIMEFRAMES tf, int shift, int leftBars, int rightBars)
@@ -408,7 +453,7 @@ void UpdateDashboard()
    DrawLabel("hdr_r_div_h4", x2 + 260,56, "DIV H4",   8, clrDimGray);
    DrawLabel("hdr_r_div_m",  x2 + 335,56, "DIV M15",  8, clrDimGray);
 
-   DrawLabel("legend", 200, 35, "Stati RSI: N=Neutro  OC=Ipercomprato  OV=Ipervenduto", 8, clrGray);
+   DrawLabel("legend", 200, 35, "RSI: H4 75/25 | M15 85/15 | BOTH=allineati", 8, clrGray);
 
    int symTotal = SymbolsTotal(true);
    int count = 0;
@@ -423,26 +468,36 @@ void UpdateDashboard()
       if(rsiMain == EMPTY_VALUE || rsiSecondary == EMPTY_VALUE) continue;
       if(rsiMain < 0 || rsiMain > 100 || rsiSecondary < 0 || rsiSecondary > 100) continue;
 
-      string statoMain = GetRsiState(rsiMain);
-      string statoSecondary = GetRsiState(rsiSecondary);
       string stateMainCode = GetRsiStateCode(rsiMain);
       string stateSecondaryCode = GetRsiStateCode(rsiSecondary);
       string divMain = DivergenceToText(GetRsiDivergence(symbol, rsiTimeframeMain));
       string divSecondary = DivergenceToText(GetRsiDivergence(symbol, rsiTimeframeSecondary));
+      int h4ExtremeSignal = GetExtremeSignal(rsiMain, h4ExtremeOverbought, h4ExtremeOversold);
+      int m15ExtremeSignal = GetExtremeSignal(rsiSecondary, m15ExtremeOverbought, m15ExtremeOversold);
+      int bothExtremeSignal = 0;
+      if(h4ExtremeSignal != 0 && h4ExtremeSignal == m15ExtremeSignal)
+         bothExtremeSignal = h4ExtremeSignal;
 
-      // Colore riga basato solo sul timeframe principale (H4 di default).
-      color rowColor = clrBlack;
-      if(statoMain != "Neutro")
-         rowColor = GetRsiStateColor(rsiMain);
+      // Evidenziazione indipendente H4/M15 + colore dedicato quando entrambi sono allineati.
+      color h4Color = GetH4ExtremeColor(h4ExtremeSignal);
+      color m15Color = GetM15ExtremeColor(m15ExtremeSignal);
+      color bothColor = GetBothExtremeColor(bothExtremeSignal);
+      color neutralColor = clrBlack;
+      color symbolColor = (bothExtremeSignal != 0 ? bothColor : neutralColor);
+      color divColor = (bothExtremeSignal != 0 ? bothColor : neutralColor);
+      string bothTag = GetBothExtremeTag(bothExtremeSignal);
+      string symbolText = symbol;
+      if(bothExtremeSignal != 0)
+         symbolText = symbol + " " + bothTag;
 
       int x = (count < 20) ? x1 : x2;
       int y = (count < 20) ? y1 : y2;
 
-      DrawLabel("row_sym_"+IntegerToString(count),      x,       y, symbol,                                  9, rowColor);
-      DrawLabel("row_h4_"+IntegerToString(count),       x + 70,  y, DoubleToString(rsiMain, 1) + " " + stateMainCode,      9, rowColor);
-      DrawLabel("row_m15_"+IntegerToString(count),      x + 165, y, DoubleToString(rsiSecondary, 1) + " " + stateSecondaryCode, 9, rowColor);
-      DrawLabel("row_div_h4_"+IntegerToString(count),   x + 260, y, divMain,                                 9, rowColor);
-      DrawLabel("row_div_m15_"+IntegerToString(count),  x + 335, y, divSecondary,                            9, rowColor);
+      DrawLabel("row_sym_"+IntegerToString(count),      x,       y, symbolText,                                                 9, symbolColor);
+      DrawLabel("row_h4_"+IntegerToString(count),       x + 70,  y, DoubleToString(rsiMain, 1) + " " + stateMainCode,          9, h4Color);
+      DrawLabel("row_m15_"+IntegerToString(count),      x + 165, y, DoubleToString(rsiSecondary, 1) + " " + stateSecondaryCode,9, m15Color);
+      DrawLabel("row_div_h4_"+IntegerToString(count),   x + 260, y, divMain,                                                     9, divColor);
+      DrawLabel("row_div_m15_"+IntegerToString(count),  x + 335, y, divSecondary,                                                9, divColor);
       DrawButton("btn_"+symbol, x + 410, y - 2, "Vai", symbol, 45, 18);
 
       if(count < 20) y1 += 22; else y2 += 22;
