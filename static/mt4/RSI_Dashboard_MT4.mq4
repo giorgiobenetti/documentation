@@ -26,12 +26,12 @@ string poweredByText = "Powered by Investire.biz";
 string PREFIX = "RSIDASH_";
 color COLOR_BRAND_GREEN = C'87,190,124';   // #57be7c
 color COLOR_SIGNAL_GREEN = C'130,230,170'; // verde chiaro per strumenti
-color COLOR_H4_OVER = C'220,60,60';
-color COLOR_H4_UNDER = C'64,132,255';
-color COLOR_M15_OVER = C'255,140,0';
-color COLOR_M15_UNDER = C'165,80,220';
-color COLOR_BOTH_OVER = C'255,0,170';
-color COLOR_BOTH_UNDER = C'0,170,110';
+color COLOR_H4_OVER = C'220,0,0';      // rosso forte
+color COLOR_H4_UNDER = C'0,70,220';    // blu forte
+color COLOR_M15_OVER = C'255,120,0';   // arancione forte
+color COLOR_M15_UNDER = C'140,0,200';  // viola forte
+color COLOR_BOTH_OVER = C'255,0,255';  // magenta intenso
+color COLOR_BOTH_UNDER = C'0,160,0';   // verde intenso
 
 // snapshot stile grafico originale
 bool g_chartStyleSaved = false;
@@ -344,7 +344,7 @@ void DrawBackgroundPanel()
 }
 
 //-------------------- Drawing helpers ------------------------------
-void DrawLabel(string name, int x, int y, string text, int fontSize, color c)
+void DrawLabel(string name, int x, int y, string text, int fontSize, color c, bool bold = false)
 {
    name = PREFIX + name;
 
@@ -357,7 +357,7 @@ void DrawLabel(string name, int x, int y, string text, int fontSize, color c)
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
    ObjectSetInteger(0, name, OBJPROP_COLOR, c);
    ObjectSetString (0, name, OBJPROP_TEXT, text);
-   ObjectSetString (0, name, OBJPROP_FONT, "Arial");
+   ObjectSetString (0, name, OBJPROP_FONT, (bold ? "Arial Bold" : "Arial"));
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, name, OBJPROP_ZORDER, 20);
@@ -440,18 +440,18 @@ void UpdateDashboard()
    string tfSecondary = TfToString(rsiTimeframeSecondary);
 
    // Header colonna sinistra
-   DrawLabel("hdr_l_sym",    x1,      56, "SYM",      8, clrDimGray);
-   DrawLabel("hdr_l_h4",     x1 + 70, 56, tfMain,     8, clrDimGray);
-   DrawLabel("hdr_l_m15",    x1 + 165,56, tfSecondary,8, clrDimGray);
-   DrawLabel("hdr_l_div_h4", x1 + 260,56, "DIV H4",   8, clrDimGray);
-   DrawLabel("hdr_l_div_m",  x1 + 335,56, "DIV M15",  8, clrDimGray);
+   DrawLabel("hdr_l_sym",    x1,      56, "SYM",      8, clrDimGray, true);
+   DrawLabel("hdr_l_h4",     x1 + 70, 56, tfMain,     8, clrDimGray, true);
+   DrawLabel("hdr_l_m15",    x1 + 165,56, tfSecondary,8, clrDimGray, true);
+   DrawLabel("hdr_l_div_h4", x1 + 260,56, "DIV H4",   8, clrDimGray, true);
+   DrawLabel("hdr_l_div_m",  x1 + 335,56, "DIV M15",  8, clrDimGray, true);
 
    // Header colonna destra
-   DrawLabel("hdr_r_sym",    x2,      56, "SYM",      8, clrDimGray);
-   DrawLabel("hdr_r_h4",     x2 + 70, 56, tfMain,     8, clrDimGray);
-   DrawLabel("hdr_r_m15",    x2 + 165,56, tfSecondary,8, clrDimGray);
-   DrawLabel("hdr_r_div_h4", x2 + 260,56, "DIV H4",   8, clrDimGray);
-   DrawLabel("hdr_r_div_m",  x2 + 335,56, "DIV M15",  8, clrDimGray);
+   DrawLabel("hdr_r_sym",    x2,      56, "SYM",      8, clrDimGray, true);
+   DrawLabel("hdr_r_h4",     x2 + 70, 56, tfMain,     8, clrDimGray, true);
+   DrawLabel("hdr_r_m15",    x2 + 165,56, tfSecondary,8, clrDimGray, true);
+   DrawLabel("hdr_r_div_h4", x2 + 260,56, "DIV H4",   8, clrDimGray, true);
+   DrawLabel("hdr_r_div_m",  x2 + 335,56, "DIV M15",  8, clrDimGray, true);
 
    DrawLabel("legend", 200, 35, "RSI: H4 75/25 | M15 85/15 | BOTH=allineati", 8, clrGray);
 
@@ -483,7 +483,11 @@ void UpdateDashboard()
       color m15Color = GetM15ExtremeColor(m15ExtremeSignal);
       color bothColor = GetBothExtremeColor(bothExtremeSignal);
       color neutralColor = clrBlack;
-      color symbolColor = (bothExtremeSignal != 0 ? bothColor : neutralColor);
+      color symbolColor = neutralColor;
+      if(bothExtremeSignal != 0) symbolColor = bothColor;
+      else if(h4ExtremeSignal != 0) symbolColor = h4Color;
+      else if(m15ExtremeSignal != 0) symbolColor = m15Color;
+
       color divColor = (bothExtremeSignal != 0 ? bothColor : neutralColor);
       string bothTag = GetBothExtremeTag(bothExtremeSignal);
       string symbolText = symbol;
@@ -493,11 +497,11 @@ void UpdateDashboard()
       int x = (count < 20) ? x1 : x2;
       int y = (count < 20) ? y1 : y2;
 
-      DrawLabel("row_sym_"+IntegerToString(count),      x,       y, symbolText,                                                 9, symbolColor);
-      DrawLabel("row_h4_"+IntegerToString(count),       x + 70,  y, DoubleToString(rsiMain, 1) + " " + stateMainCode,          9, h4Color);
-      DrawLabel("row_m15_"+IntegerToString(count),      x + 165, y, DoubleToString(rsiSecondary, 1) + " " + stateSecondaryCode,9, m15Color);
-      DrawLabel("row_div_h4_"+IntegerToString(count),   x + 260, y, divMain,                                                     9, divColor);
-      DrawLabel("row_div_m15_"+IntegerToString(count),  x + 335, y, divSecondary,                                                9, divColor);
+      DrawLabel("row_sym_"+IntegerToString(count),      x,       y, symbolText,                                                 10, symbolColor, true);
+      DrawLabel("row_h4_"+IntegerToString(count),       x + 70,  y, DoubleToString(rsiMain, 1) + " " + stateMainCode,          10, h4Color, true);
+      DrawLabel("row_m15_"+IntegerToString(count),      x + 165, y, DoubleToString(rsiSecondary, 1) + " " + stateSecondaryCode,10, m15Color, true);
+      DrawLabel("row_div_h4_"+IntegerToString(count),   x + 260, y, divMain,                                                     10, divColor, true);
+      DrawLabel("row_div_m15_"+IntegerToString(count),  x + 335, y, divSecondary,                                                10, divColor, true);
       DrawButton("btn_"+symbol, x + 410, y - 2, "Vai", symbol, 45, 18);
 
       if(count < 20) y1 += 22; else y2 += 22;
