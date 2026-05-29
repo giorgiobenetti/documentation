@@ -365,8 +365,12 @@ Public Sub SendToFirstPromoter()
 
     Dim i As Long
     Dim successCount As Long
+    Dim noReferralCount As Long
+    Dim duplicateCount As Long
     Dim errorCount As Long
     successCount = 0
+    noReferralCount = 0
+    duplicateCount = 0
     errorCount = 0
 
     For i = OUTPUT_FIRST_ROW To lastRow
@@ -391,7 +395,7 @@ Public Sub SendToFirstPromoter()
         amountCents = AmountToCents(amountEUR)
 
         Dim postBody As String
-        postBody = "coupon_code=" & UrlEncode(coupon) & _
+        postBody = "promo_code=" & UrlEncode(coupon) & _
                    "&email=" & UrlEncode(custEmail) & _
                    "&amount=" & CStr(amountCents) & _
                    "&currency=eur" & _
@@ -411,16 +415,27 @@ Public Sub SendToFirstPromoter()
         SetNumberFormatSafe wsLog.Cells(logRow, 4), "#,##0.00"
         wsLog.Cells(logRow, 5).Value = fpStatus
         wsLog.Cells(logRow, 6).Value = fpResponse
+        wsLog.Cells(logRow, 7).Value = FirstPromoterResultLabel(fpStatus)
+        wsLog.Cells(logRow, 8).Value = postBody
 
-        If fpStatus >= 200 And fpStatus < 300 Then
-            wsO.Cells(i, 11).Value = "Yes"
-            wsO.Cells(i, 11).Interior.Color = RGB(212, 237, 218)
-            successCount = successCount + 1
-        Else
-            wsO.Cells(i, 11).Value = "Error"
-            wsO.Cells(i, 11).Interior.Color = RGB(248, 215, 218)
-            errorCount = errorCount + 1
-        End If
+        Select Case fpStatus
+            Case 200
+                wsO.Cells(i, 11).Value = "Yes"
+                wsO.Cells(i, 11).Interior.Color = RGB(212, 237, 218)
+                successCount = successCount + 1
+            Case 204
+                wsO.Cells(i, 11).Value = "No Referral"
+                wsO.Cells(i, 11).Interior.Color = RGB(255, 243, 205)
+                noReferralCount = noReferralCount + 1
+            Case 409
+                wsO.Cells(i, 11).Value = "Duplicate"
+                wsO.Cells(i, 11).Interior.Color = RGB(255, 243, 205)
+                duplicateCount = duplicateCount + 1
+            Case Else
+                wsO.Cells(i, 11).Value = "Error"
+                wsO.Cells(i, 11).Interior.Color = RGB(248, 215, 218)
+                errorCount = errorCount + 1
+        End Select
 
         logRow = logRow + 1
         SleepMs 300
@@ -429,13 +444,32 @@ NextSend:
     Next i
 
     MsgBox "Import complete." & vbCrLf & _
-           "Success: " & successCount & vbCrLf & _
+           "Tracked sales: " & successCount & vbCrLf & _
+           "No referral (204): " & noReferralCount & vbCrLf & _
+           "Duplicates (409): " & duplicateCount & vbCrLf & _
            "Errors: " & errorCount, vbInformation
     Exit Sub
 
 CleanFail:
     MsgBox "SendToFirstPromoter failed:" & vbCrLf & Err.Description, vbCritical
 End Sub
+
+Private Function FirstPromoterResultLabel(ByVal fpStatus As Long) As String
+    Select Case fpStatus
+        Case 200
+            FirstPromoterResultLabel = "Tracked sale - commission generated"
+        Case 204
+            FirstPromoterResultLabel = "No referral sale - no commission generated"
+        Case 400
+            FirstPromoterResultLabel = "Bad request - check response/body"
+        Case 409
+            FirstPromoterResultLabel = "Duplicate event_id"
+        Case 0
+            FirstPromoterResultLabel = "VBA/MSXML HTTP error"
+        Case Else
+            FirstPromoterResultLabel = "HTTP " & CStr(fpStatus)
+    End Select
+End Function
 
 Private Sub PostFirstPromoterSale(ByVal postBody As String, _
                                   ByVal apiKey As String, _
