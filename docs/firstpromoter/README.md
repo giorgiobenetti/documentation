@@ -22,7 +22,7 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 - Parser CSV BCE basato sulle intestazioni `TIME_PERIOD` e `OBS_VALUE`, con supporto per campi quotati.
 - Conversione EUR/USD coerente con il tasso BCE `USD per 1 EUR`: importi USD convertiti in EUR con `amount / rate`; importi EUR lasciati invariati.
 - Filtri indipendenti per `Already Paid` e `To Be Paid`, con righe verdi per pagati e gialle per da pagare.
-- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe, parametro `promo_code` per attribuire la vendita al coupon FirstPromoter, URL encoding dei parametri, timeout HTTP espliciti e marcatura `Yes` in colonna 11 solo dopo risposta HTTP 200.
+- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe, parametro query `promo_code` per attribuire la vendita al coupon FirstPromoter, URL encoding dei parametri, timeout HTTP espliciti e marcatura `Yes` in colonna 11 solo dopo risposta HTTP 200.
 
 ## Troubleshooting invio FirstPromoter
 
@@ -33,7 +33,7 @@ Se alcune righe risultano inviate ma non compaiono in FirstPromoter, controlla `
 - `409` = `event_id` duplicato, la vendita era gia stata inviata;
 - `0` = errore HTTP/VBA prima di ricevere una risposta API.
 
-Il body inviato viene scritto in colonna H del log per verificare `promo_code`, `email`, `amount` ed `event_id`.
+La query inviata viene scritta in colonna H del log per verificare `promo_code`, `email`, `amount` ed `event_id`.
 
 Se `SendToFirstPromoter` mostra `Operazione terminata`, la richiesta HTTP e stata interrotta da Excel/Windows/MSXML prima di ricevere una risposta API. La versione aggiornata usa `MSXML2.ServerXMLHTTP.6.0` e registra l'errore per singola riga in `FP_Import_Log` con stato `0`, invece di fermare tutto l'import.
 
@@ -44,6 +44,7 @@ In quel caso controlla:
 - la colonna risposta in `FP_Import_Log`, che conterra il dettaglio `VBA HTTP error ...`;
 - eventuali proxy/firewall aziendali che interrompono le chiamate HTTPS da Excel/VBA.
 - Se Excel segnala errori su `NumberFormat`, la formattazione e solo estetica: il modulo usa `SetNumberFormatSafe` per non bloccare l'import quando Excel non accetta un formato locale.
+- Le scritture su log e colonna stato sono non bloccanti, cosi una cella protetta/formattata non interrompe l'invio gia effettuato.
 
 ## Layout atteso
 

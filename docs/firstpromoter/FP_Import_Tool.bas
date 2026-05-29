@@ -407,33 +407,20 @@ Public Sub SendToFirstPromoter()
         Dim fpResponse As String
         Call PostFirstPromoterSale(postBody, apiKey, fpStatus, fpResponse)
 
-        wsLog.Cells(logRow, 1).Value = Now
-        SetNumberFormatSafe wsLog.Cells(logRow, 1), "dd/mm/yyyy hh:mm:ss"
-        wsLog.Cells(logRow, 2).Value = payID
-        wsLog.Cells(logRow, 3).Value = coupon
-        wsLog.Cells(logRow, 4).Value = Round(amountEUR, 2)
-        SetNumberFormatSafe wsLog.Cells(logRow, 4), "#,##0.00"
-        wsLog.Cells(logRow, 5).Value = fpStatus
-        wsLog.Cells(logRow, 6).Value = fpResponse
-        wsLog.Cells(logRow, 7).Value = FirstPromoterResultLabel(fpStatus)
-        wsLog.Cells(logRow, 8).Value = postBody
+        WriteFirstPromoterLog wsLog, logRow, payID, coupon, amountEUR, fpStatus, fpResponse, postBody
 
         Select Case fpStatus
             Case 200
-                wsO.Cells(i, 11).Value = "Yes"
-                wsO.Cells(i, 11).Interior.Color = RGB(212, 237, 218)
+                SetImportStatusSafe wsO, i, "Yes", RGB(212, 237, 218)
                 successCount = successCount + 1
             Case 204
-                wsO.Cells(i, 11).Value = "No Referral"
-                wsO.Cells(i, 11).Interior.Color = RGB(255, 243, 205)
+                SetImportStatusSafe wsO, i, "No Referral", RGB(255, 243, 205)
                 noReferralCount = noReferralCount + 1
             Case 409
-                wsO.Cells(i, 11).Value = "Duplicate"
-                wsO.Cells(i, 11).Interior.Color = RGB(255, 243, 205)
+                SetImportStatusSafe wsO, i, "Duplicate", RGB(255, 243, 205)
                 duplicateCount = duplicateCount + 1
             Case Else
-                wsO.Cells(i, 11).Value = "Error"
-                wsO.Cells(i, 11).Interior.Color = RGB(248, 215, 218)
+                SetImportStatusSafe wsO, i, "Error", RGB(248, 215, 218)
                 errorCount = errorCount + 1
         End Select
 
@@ -451,7 +438,46 @@ NextSend:
     Exit Sub
 
 CleanFail:
-    MsgBox "SendToFirstPromoter failed:" & vbCrLf & Err.Description, vbCritical
+    MsgBox "SendToFirstPromoter failed:" & vbCrLf & _
+           "Error " & Err.Number & ": " & Err.Description, vbCritical
+End Sub
+
+Private Sub WriteFirstPromoterLog(ByVal wsLog As Worksheet, _
+                                   ByVal logRow As Long, _
+                                   ByVal payID As String, _
+                                   ByVal coupon As String, _
+                                   ByVal amountEUR As Double, _
+                                   ByVal fpStatus As Long, _
+                                   ByVal fpResponse As String, _
+                                   ByVal postBody As String)
+    On Error Resume Next
+
+    wsLog.Cells(logRow, 1).Value = Now
+    SetNumberFormatSafe wsLog.Cells(logRow, 1), "dd/mm/yyyy hh:mm:ss"
+    wsLog.Cells(logRow, 2).Value = payID
+    wsLog.Cells(logRow, 3).Value = coupon
+    wsLog.Cells(logRow, 4).Value = Round(amountEUR, 2)
+    SetNumberFormatSafe wsLog.Cells(logRow, 4), "#,##0.00"
+    wsLog.Cells(logRow, 5).Value = fpStatus
+    wsLog.Cells(logRow, 6).Value = fpResponse
+    wsLog.Cells(logRow, 7).Value = FirstPromoterResultLabel(fpStatus)
+    wsLog.Cells(logRow, 8).Value = postBody
+
+    Err.Clear
+    On Error GoTo 0
+End Sub
+
+Private Sub SetImportStatusSafe(ByVal ws As Worksheet, _
+                                ByVal rowNumber As Long, _
+                                ByVal statusText As String, _
+                                ByVal fillColor As Long)
+    On Error Resume Next
+
+    ws.Cells(rowNumber, 11).Value = statusText
+    ws.Cells(rowNumber, 11).Interior.Color = fillColor
+
+    Err.Clear
+    On Error GoTo 0
 End Sub
 
 Private Function FirstPromoterResultLabel(ByVal fpStatus As Long) As String
@@ -471,7 +497,7 @@ Private Function FirstPromoterResultLabel(ByVal fpStatus As Long) As String
     End Select
 End Function
 
-Private Sub PostFirstPromoterSale(ByVal postBody As String, _
+Private Sub PostFirstPromoterSale(ByVal queryString As String, _
                                   ByVal apiKey As String, _
                                   ByRef fpStatus As Long, _
                                   ByRef fpResponse As String)
@@ -482,12 +508,11 @@ Private Sub PostFirstPromoterSale(ByVal postBody As String, _
 
     ' Resolve/connect/send/receive timeouts in milliseconds.
     http.setTimeouts 5000, 10000, 30000, 30000
-    http.Open "POST", FP_TRACK_URL, False
-    http.setRequestHeader "Content-Type", "application/x-www-form-urlencoded"
+    http.Open "POST", FP_TRACK_URL & "?" & queryString, False
     http.setRequestHeader "Accept", "application/json"
     http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
     http.setRequestHeader "x-api-key", apiKey
-    http.Send postBody
+    http.Send vbNullString
 
     fpStatus = CLng(http.Status)
     fpResponse = Left$(CStr(http.responseText), 500)
@@ -845,6 +870,8 @@ Private Sub SetNumberFormatSafe(ByVal targetRange As Range, ByVal formatCode As 
 End Sub
 
 Private Sub ApplyStatusFill(ByVal targetRange As Range, ByVal statusText As String)
+    On Error Resume Next
+
     Select Case statusText
         Case "Already Paid"
             targetRange.Interior.Color = RGB(212, 237, 218)
@@ -853,6 +880,9 @@ Private Sub ApplyStatusFill(ByVal targetRange As Range, ByVal statusText As Stri
         Case Else
             targetRange.Interior.Pattern = xlNone
     End Select
+
+    Err.Clear
+    On Error GoTo 0
 End Sub
 
 Private Function AmountToCents(ByVal amountEUR As Double) As Long
