@@ -34,6 +34,7 @@ In quel caso controlla:
 - che il PC abbia accesso HTTPS a `https://firstpromoter.com`;
 - la colonna risposta in `FP_Import_Log`, che conterra il dettaglio `VBA HTTP error ...`;
 - eventuali proxy/firewall aziendali che interrompono le chiamate HTTPS da Excel/VBA.
+- Se Excel segnala errori su `NumberFormat`, la formattazione e solo estetica: il modulo usa `SetNumberFormatSafe` per non bloccare l'import quando Excel non accetta un formato locale.
 
 ## Layout atteso
 

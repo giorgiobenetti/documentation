@@ -86,10 +86,10 @@ Public Sub UpdateECBRates()
         If rateValue <= 0 Then GoTo NextRateLine
 
         ws.Cells(r, 1).Value = DateValue(rateDate)
-        ws.Cells(r, 1).NumberFormat = "dd/mm/yyyy"
+        SetNumberFormatSafe ws.Cells(r, 1), "dd/mm/yyyy"
         ' ECB series D.USD.EUR.SP00.A is USD per 1 EUR.
         ws.Cells(r, 2).Value = rateValue
-        ws.Cells(r, 2).NumberFormat = "0.0000"
+        SetNumberFormatSafe ws.Cells(r, 2), "0.0000"
         ws.Cells(r, 3).Value = "ECB"
         r = r + 1
 
@@ -305,17 +305,17 @@ Public Sub GenerateOutput()
 
         wsO.Cells(outRow, 1).Value = payID
         wsO.Cells(outRow, 2).Value = payDateOnly
-        wsO.Cells(outRow, 2).NumberFormat = "dd/mm/yyyy"
+        SetNumberFormatSafe wsO.Cells(outRow, 2), "dd/mm/yyyy"
         wsO.Cells(outRow, 3).Value = custEmail
         wsO.Cells(outRow, 4).Value = coupon
         wsO.Cells(outRow, 5).Value = affiliateName
         wsO.Cells(outRow, 6).Value = amount
-        wsO.Cells(outRow, 6).NumberFormat = "#,##0.00"
+        SetNumberFormatSafe wsO.Cells(outRow, 6), "#,##0.00"
         wsO.Cells(outRow, 7).Value = paymentCurrency
         wsO.Cells(outRow, 8).Value = Round(amountEUR, 2)
-        wsO.Cells(outRow, 8).NumberFormat = "#,##0.00"
+        SetNumberFormatSafe wsO.Cells(outRow, 8), "#,##0.00"
         wsO.Cells(outRow, 9).Value = Round(rate, 4)
-        wsO.Cells(outRow, 9).NumberFormat = "0.0000"
+        SetNumberFormatSafe wsO.Cells(outRow, 9), "0.0000"
         wsO.Cells(outRow, 10).Value = statusText
         wsO.Cells(outRow, 11).Value = "No"
 
@@ -404,11 +404,11 @@ Public Sub SendToFirstPromoter()
         Call PostFirstPromoterSale(postBody, apiKey, fpStatus, fpResponse)
 
         wsLog.Cells(logRow, 1).Value = Now
-        wsLog.Cells(logRow, 1).NumberFormat = "dd/mm/yyyy hh:nn:ss"
+        SetNumberFormatSafe wsLog.Cells(logRow, 1), "dd/mm/yyyy hh:mm:ss"
         wsLog.Cells(logRow, 2).Value = payID
         wsLog.Cells(logRow, 3).Value = coupon
         wsLog.Cells(logRow, 4).Value = Round(amountEUR, 2)
-        wsLog.Cells(logRow, 4).NumberFormat = "#,##0.00"
+        SetNumberFormatSafe wsLog.Cells(logRow, 4), "#,##0.00"
         wsLog.Cells(logRow, 5).Value = fpStatus
         wsLog.Cells(logRow, 6).Value = fpResponse
 
@@ -798,6 +798,17 @@ Private Function FindHeaderColumnInRow(ByVal ws As Worksheet, ByVal rowNumber As
         End If
     Next col
 End Function
+
+Private Sub SetNumberFormatSafe(ByVal targetRange As Range, ByVal formatCode As String)
+    On Error Resume Next
+    targetRange.NumberFormat = formatCode
+    If Err.Number <> 0 Then
+        Err.Clear
+        targetRange.NumberFormatLocal = formatCode
+    End If
+    Err.Clear
+    On Error GoTo 0
+End Sub
 
 Private Sub ApplyStatusFill(ByVal targetRange As Range, ByVal statusText As String)
     Select Case statusText
