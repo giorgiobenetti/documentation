@@ -399,17 +399,9 @@ Public Sub SendToFirstPromoter()
                    "&created_at=" & UrlEncode(Format$(payDate, "yyyy-mm-dd\Thh:nn:ss\Z")) & _
                    "&skip_email_notification=true"
 
-        Dim http As Object
-        Set http = CreateObject("MSXML2.XMLHTTP")
-        http.Open "POST", FP_TRACK_URL, False
-        http.setRequestHeader "Content-Type", "application/x-www-form-urlencoded"
-        http.setRequestHeader "x-api-key", apiKey
-        http.Send postBody
-
         Dim fpStatus As Long
         Dim fpResponse As String
-        fpStatus = CLng(http.Status)
-        fpResponse = Left$(CStr(http.responseText), 500)
+        Call PostFirstPromoterSale(postBody, apiKey, fpStatus, fpResponse)
 
         wsLog.Cells(logRow, 1).Value = Now
         wsLog.Cells(logRow, 1).NumberFormat = "dd/mm/yyyy hh:nn:ss"
@@ -443,6 +435,33 @@ NextSend:
 
 CleanFail:
     MsgBox "SendToFirstPromoter failed:" & vbCrLf & Err.Description, vbCritical
+End Sub
+
+Private Sub PostFirstPromoterSale(ByVal postBody As String, _
+                                  ByVal apiKey As String, _
+                                  ByRef fpStatus As Long, _
+                                  ByRef fpResponse As String)
+    On Error GoTo RequestFailed
+
+    Dim http As Object
+    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+
+    ' Resolve/connect/send/receive timeouts in milliseconds.
+    http.setTimeouts 5000, 10000, 30000, 30000
+    http.Open "POST", FP_TRACK_URL, False
+    http.setRequestHeader "Content-Type", "application/x-www-form-urlencoded"
+    http.setRequestHeader "Accept", "application/json"
+    http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
+    http.setRequestHeader "x-api-key", apiKey
+    http.Send postBody
+
+    fpStatus = CLng(http.Status)
+    fpResponse = Left$(CStr(http.responseText), 500)
+    Exit Sub
+
+RequestFailed:
+    fpStatus = 0
+    fpResponse = "VBA HTTP error " & Err.Number & ": " & Err.Description
 End Sub
 
 Private Function GetToolWorkbook() As Workbook

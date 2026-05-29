@@ -22,7 +22,18 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 - Parser CSV BCE basato sulle intestazioni `TIME_PERIOD` e `OBS_VALUE`, con supporto per campi quotati.
 - Conversione EUR/USD coerente con il tasso BCE `USD per 1 EUR`: importi USD convertiti in EUR con `amount / rate`; importi EUR lasciati invariati.
 - Filtri indipendenti per `Already Paid` e `To Be Paid`, con righe verdi per pagati e gialle per da pagare.
-- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe, URL encoding dei parametri e marcatura `Yes` in colonna 11 dopo risposte HTTP 2xx.
+- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe, URL encoding dei parametri, timeout HTTP espliciti e marcatura `Yes` in colonna 11 dopo risposte HTTP 2xx.
+
+## Troubleshooting invio FirstPromoter
+
+Se `SendToFirstPromoter` mostra `Operazione terminata`, la richiesta HTTP e stata interrotta da Excel/Windows/MSXML prima di ricevere una risposta API. La versione aggiornata usa `MSXML2.ServerXMLHTTP.6.0` e registra l'errore per singola riga in `FP_Import_Log` con stato `0`, invece di fermare tutto l'import.
+
+In quel caso controlla:
+
+- che la costante `FP_API_KEY` sia valorizzata;
+- che il PC abbia accesso HTTPS a `https://firstpromoter.com`;
+- la colonna risposta in `FP_Import_Log`, che conterra il dettaglio `VBA HTTP error ...`;
+- eventuali proxy/firewall aziendali che interrompono le chiamate HTTPS da Excel/VBA.
 
 ## Layout atteso
 
