@@ -17,6 +17,7 @@ Private Const FP_API_KEY As String = ""
 Private Const FP_ACCOUNT_ID As String = ""
 Private Const FP_TRACK_URL_V1 As String = "https://firstpromoter.com/api/v1/track/sale"
 Private Const FP_TRACK_URL_V2 As String = "https://api.firstpromoter.com/api/v2/track/sale"
+Private Const FP_SIGNUP_URL_V2 As String = "https://api.firstpromoter.com/api/v2/track/signup"
 Private Const ECB_URL As String = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?format=csvdata&startPeriod=2023-05-01"
 
 Private Const SHEET_EXCHANGE_RATES As String = "Exchange_Rates"
@@ -222,12 +223,13 @@ Public Sub GenerateOutput()
     Dim colCurrency As Long
     Dim colRefundedDate As Long
     Dim colEmail As Long
+    Dim colCustomerID As Long
     Dim colDisputeDate As Long
-    ResolvePaymentsLayout wsP, dataStartRow, colID, colCreated, colAmount, colRefundedAmount, colCurrency, colRefundedDate, colEmail, colDisputeDate
+    ResolvePaymentsLayout wsP, dataStartRow, colID, colCreated, colAmount, colRefundedAmount, colCurrency, colRefundedDate, colEmail, colCustomerID, colDisputeDate
 
     Dim lastOutputRow As Long
     lastOutputRow = Application.Max(OUTPUT_FIRST_ROW, wsO.Cells(wsO.Rows.Count, 1).End(xlUp).Row)
-    ClearRangeContentsAndFill wsO.Range("A" & OUTPUT_FIRST_ROW & ":K" & lastOutputRow)
+    ClearRangeContentsAndFill wsO.Range("A" & OUTPUT_FIRST_ROW & ":L" & lastOutputRow)
 
     Dim lastRow As Long
     lastRow = wsP.Cells(wsP.Rows.Count, colID).End(xlUp).Row
@@ -259,6 +261,9 @@ Public Sub GenerateOutput()
         paymentCurrency = UCase$(Trim$(CStr(wsP.Cells(i, colCurrency).Value)))
         refundDate = Trim$(CStr(wsP.Cells(i, colRefundedDate).Value))
         custEmail = NormalizeEmail(wsP.Cells(i, colEmail).Value)
+        Dim stripeCustomerID As String
+        stripeCustomerID = vbNullString
+        If colCustomerID > 0 Then stripeCustomerID = Trim$(CStr(wsP.Cells(i, colCustomerID).Value))
         disputeDate = Trim$(CStr(wsP.Cells(i, colDisputeDate).Value))
 
         If amount <= 0 Then GoTo NextPaymentRow
@@ -323,8 +328,9 @@ Public Sub GenerateOutput()
         SetNumberFormatSafe wsO.Cells(outRow, 9), "0.0000"
         wsO.Cells(outRow, 10).Value = statusText
         wsO.Cells(outRow, 11).Value = "No"
+        wsO.Cells(outRow, 12).Value = stripeCustomerID
 
-        ApplyStatusFill wsO.Range(wsO.Cells(outRow, 1), wsO.Cells(outRow, 11)), statusText
+        ApplyStatusFill wsO.Range(wsO.Cells(outRow, 1), wsO.Cells(outRow, 12)), statusText
 
         outRow = outRow + 1
 
@@ -388,6 +394,7 @@ Public Sub SendToFirstPromoter()
         Dim payDate As Date
         Dim custEmail As String
         Dim coupon As String
+        Dim customerUID As String
         Dim amountEUR As Double
         Dim requestPayload As String
         Dim fpStatus As Long
@@ -398,6 +405,7 @@ Public Sub SendToFirstPromoter()
         payID = vbNullString
         custEmail = vbNullString
         coupon = vbNullString
+        customerUID = vbNullString
         amountEUR = 0
         requestPayload = vbNullString
         fpStatus = 0
@@ -430,6 +438,7 @@ Public Sub SendToFirstPromoter()
 
         stage = "Validate promo code"
         coupon = Trim$(CStr(wsO.Cells(i, 4).Value))
+        customerUID = Trim$(CStr(wsO.Cells(i, 12).Value))
         If coupon = vbNullString Then
             Err.Raise vbObjectError + 1703, "SendToFirstPromoter", "Missing promo_code/ref_id in Filter_Output column D."
         End If
@@ -443,10 +452,10 @@ Public Sub SendToFirstPromoter()
         End If
 
         stage = "Build FirstPromoter payload"
-        requestPayload = BuildFirstPromoterSalePayload(payID, payDate, custEmail, coupon, amountEUR)
+        requestPayload = BuildFirstPromoterSalePayload(payID, payDate, custEmail, coupon, amountEUR, customerUID)
 
         stage = "HTTP request to FirstPromoter"
-        Call PostFirstPromoterSale(requestPayload, apiKey, fpStatus, fpResponse)
+        Call PostFirstPromoterSale(requestPayload, apiKey, payDate, custEmail, coupon, customerUID, fpStatus, fpResponse)
         resultLabel = FirstPromoterResultLabel(fpStatus)
 
         stage = "Write FirstPromoter log"
@@ -624,6 +633,7 @@ Public Sub DiagnoseFirstPromoterSelectedRow()
     Dim payDate As Date
     Dim custEmail As String
     Dim coupon As String
+    Dim customerUID As String
     Dim amountEUR As Double
 
     payID = Trim$(CStr(wsO.Cells(rowNumber, 1).Value))
@@ -635,6 +645,7 @@ Public Sub DiagnoseFirstPromoterSelectedRow()
 
     coupon = Trim$(CStr(wsO.Cells(rowNumber, 4).Value))
     If coupon = vbNullString Then Err.Raise vbObjectError + 1604, "DiagnoseFirstPromoterSelectedRow", "Missing promo/tracking coupon in column D."
+    customerUID = Trim$(CStr(wsO.Cells(rowNumber, 12).Value))
 
     If Not TryParseNumber(wsO.Cells(rowNumber, 8).Value, amountEUR) Then Err.Raise vbObjectError + 1605, "DiagnoseFirstPromoterSelectedRow", "Invalid EUR amount in column H."
     If amountEUR <= 0 Then Err.Raise vbObjectError + 1606, "DiagnoseFirstPromoterSelectedRow", "EUR amount must be greater than zero."
@@ -642,12 +653,13 @@ Public Sub DiagnoseFirstPromoterSelectedRow()
     Call GetFirstPromoterApiKey
 
     Dim requestPayload As String
-    requestPayload = BuildFirstPromoterSalePayload(payID, payDate, custEmail, coupon, amountEUR)
+    requestPayload = BuildFirstPromoterSalePayload(payID, payDate, custEmail, coupon, amountEUR, customerUID)
 
     MsgBox "Local validation OK. No request was sent." & vbCrLf & vbCrLf & _
            "Checks:" & vbCrLf & _
            "- column D is sent both as promo_code and ref_id." & vbCrLf & _
            "- email is the Stripe customer/lead email, not the promoter email." & vbCrLf & _
+           "- column L is sent as uid when present (Stripe customer id)." & vbCrLf & _
            "- event_id is the Stripe payment id and must be unique." & vbCrLf & _
            "- API mode: " & FirstPromoterApiMode() & vbCrLf & vbCrLf & _
            "Payload:" & vbCrLf & requestPayload, vbInformation
@@ -679,6 +691,10 @@ End Function
 
 Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
                                   ByVal apiKey As String, _
+                                  ByVal payDate As Date, _
+                                  ByVal custEmail As String, _
+                                  ByVal coupon As String, _
+                                  ByVal customerUID As String, _
                                   ByRef fpStatus As Long, _
                                   ByRef fpResponse As String)
     On Error GoTo RequestFailed
@@ -690,13 +706,20 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
     http.setTimeouts 5000, 10000, 30000, 30000
 
     If IsFirstPromoterV2() Then
-        http.Open "POST", FP_TRACK_URL_V2, False
-        http.setRequestHeader "Content-Type", "application/json"
-        http.setRequestHeader "Accept", "application/json"
-        http.setRequestHeader "Authorization", "Bearer " & apiKey
-        http.setRequestHeader "Account-ID", Trim$(FP_ACCOUNT_ID)
-        http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
-        http.Send requestPayload
+        Dim signupStatus As Long
+        Dim signupResponse As String
+        Dim signupPayload As String
+        signupPayload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, customerUID)
+
+        Call PostFirstPromoterJson(FP_SIGNUP_URL_V2, signupPayload, apiKey, signupStatus, signupResponse)
+        If signupStatus <> 200 And signupStatus <> 422 Then
+            fpStatus = signupStatus
+            fpResponse = "Signup failed: " & signupResponse & " | Signup payload: " & signupPayload
+            Exit Sub
+        End If
+
+        Call PostFirstPromoterJson(FP_TRACK_URL_V2, requestPayload, apiKey, fpStatus, fpResponse)
+        fpResponse = "Signup HTTP " & CStr(signupStatus) & ": " & Left$(signupResponse, 200) & " | Sale: " & fpResponse
     Else
         http.Open "POST", FP_TRACK_URL_V1 & "?" & requestPayload, False
         http.setRequestHeader "Accept", "application/json"
@@ -704,6 +727,34 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
         http.setRequestHeader "X-API-KEY", apiKey
         http.Send vbNullString
     End If
+
+    fpStatus = CLng(http.Status)
+    fpResponse = Left$(CStr(http.responseText), 500)
+    Exit Sub
+
+RequestFailed:
+    fpStatus = 0
+    fpResponse = "VBA HTTP error " & Err.Number & ": " & Err.Description
+End Sub
+
+Private Sub PostFirstPromoterJson(ByVal url As String, _
+                                  ByVal jsonPayload As String, _
+                                  ByVal apiKey As String, _
+                                  ByRef fpStatus As Long, _
+                                  ByRef fpResponse As String)
+    On Error GoTo RequestFailed
+
+    Dim http As Object
+    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+
+    http.setTimeouts 5000, 10000, 30000, 30000
+    http.Open "POST", url, False
+    http.setRequestHeader "Content-Type", "application/json"
+    http.setRequestHeader "Accept", "application/json"
+    http.setRequestHeader "Authorization", "Bearer " & apiKey
+    http.setRequestHeader "Account-ID", Trim$(FP_ACCOUNT_ID)
+    http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
+    http.Send jsonPayload
 
     fpStatus = CLng(http.Status)
     fpResponse = Left$(CStr(http.responseText), 500)
@@ -1005,6 +1056,7 @@ Private Sub ResolvePaymentsLayout(ByVal ws As Worksheet, _
                                   ByRef colCurrency As Long, _
                                   ByRef colRefundedDate As Long, _
                                   ByRef colEmail As Long, _
+                                  ByRef colCustomerID As Long, _
                                   ByRef colDisputeDate As Long)
     Dim headerRow As Long
     For headerRow = 1 To 10
@@ -1015,6 +1067,7 @@ Private Sub ResolvePaymentsLayout(ByVal ws As Worksheet, _
         colCurrency = FindHeaderColumnInRow(ws, headerRow, "Converted Currency")
         colRefundedDate = FindHeaderColumnInRow(ws, headerRow, "Refunded date UTC")
         colEmail = FindHeaderColumnInRow(ws, headerRow, "Customer Email")
+        colCustomerID = FindFirstHeaderColumnInRow(ws, headerRow, Array("Customer ID", "Customer Id", "Customer", "Stripe Customer ID", "Stripe Customer Id"))
         colDisputeDate = FindHeaderColumnInRow(ws, headerRow, "Dispute Date UTC")
 
         If colID > 0 And colCreated > 0 And colAmount > 0 And colRefundedAmount > 0 And _
@@ -1033,8 +1086,17 @@ Private Sub ResolvePaymentsLayout(ByVal ws As Worksheet, _
     colCurrency = 5
     colRefundedDate = 6
     colEmail = 7
+    colCustomerID = 0
     colDisputeDate = 8
 End Sub
+
+Private Function FindFirstHeaderColumnInRow(ByVal ws As Worksheet, ByVal rowNumber As Long, ByVal headerNames As Variant) As Long
+    Dim i As Long
+    For i = LBound(headerNames) To UBound(headerNames)
+        FindFirstHeaderColumnInRow = FindHeaderColumnInRow(ws, rowNumber, CStr(headerNames(i)))
+        If FindFirstHeaderColumnInRow > 0 Then Exit Function
+    Next i
+End Function
 
 Private Function FindHeaderColumnInRow(ByVal ws As Worksheet, ByVal rowNumber As Long, ByVal headerText As String) As Long
     Dim lastCol As Long
@@ -1080,11 +1142,12 @@ Private Function BuildFirstPromoterSalePayload(ByVal payID As String, _
                                              ByVal payDate As Date, _
                                              ByVal custEmail As String, _
                                              ByVal coupon As String, _
-                                             ByVal amountEUR As Double) As String
+                                             ByVal amountEUR As Double, _
+                                             ByVal customerUID As String) As String
     If IsFirstPromoterV2() Then
-        BuildFirstPromoterSalePayload = BuildFirstPromoterSaleJson(payID, custEmail, coupon, amountEUR)
+        BuildFirstPromoterSalePayload = BuildFirstPromoterSaleJson(payID, custEmail, coupon, amountEUR, customerUID)
     Else
-        BuildFirstPromoterSalePayload = BuildFirstPromoterSaleQuery(payID, payDate, custEmail, coupon, amountEUR)
+        BuildFirstPromoterSalePayload = BuildFirstPromoterSaleQuery(payID, payDate, custEmail, coupon, amountEUR, customerUID)
     End If
 End Function
 
@@ -1092,10 +1155,12 @@ Private Function BuildFirstPromoterSaleQuery(ByVal payID As String, _
                                              ByVal payDate As Date, _
                                              ByVal custEmail As String, _
                                              ByVal coupon As String, _
-                                             ByVal amountEUR As Double) As String
+                                             ByVal amountEUR As Double, _
+                                             ByVal customerUID As String) As String
     BuildFirstPromoterSaleQuery = "promo_code=" & UrlEncode(Trim$(coupon)) & _
         "&ref_id=" & UrlEncode(Trim$(coupon)) & _
         "&email=" & UrlEncode(NormalizeEmail(custEmail)) & _
+        OptionalQueryParam("uid", customerUID) & _
         "&amount=" & CStr(AmountToCents(amountEUR)) & _
         "&currency=eur" & _
         "&event_id=" & UrlEncode(Trim$(payID)) & _
@@ -1106,16 +1171,45 @@ End Function
 Private Function BuildFirstPromoterSaleJson(ByVal payID As String, _
                                             ByVal custEmail As String, _
                                             ByVal coupon As String, _
-                                            ByVal amountEUR As Double) As String
+                                            ByVal amountEUR As Double, _
+                                            ByVal customerUID As String) As String
     BuildFirstPromoterSaleJson = "{" & _
         JsonString("promo_code") & ":" & JsonString(Trim$(coupon)) & "," & _
         JsonString("ref_id") & ":" & JsonString(Trim$(coupon)) & "," & _
         JsonString("email") & ":" & JsonString(NormalizeEmail(custEmail)) & "," & _
+        OptionalJsonStringProperty("uid", customerUID) & _
         JsonString("amount") & ":" & CStr(AmountToCents(amountEUR)) & "," & _
         JsonString("currency") & ":" & JsonString("eur") & "," & _
         JsonString("event_id") & ":" & JsonString(Trim$(payID)) & "," & _
         JsonString("skip_email_notification") & ":true" & _
         "}"
+End Function
+
+Private Function BuildFirstPromoterSignupJson(ByVal signupDate As Date, _
+                                              ByVal custEmail As String, _
+                                              ByVal coupon As String, _
+                                              ByVal customerUID As String) As String
+    BuildFirstPromoterSignupJson = "{" & _
+        JsonString("ref_id") & ":" & JsonString(Trim$(coupon)) & "," & _
+        JsonString("email") & ":" & JsonString(NormalizeEmail(custEmail)) & "," & _
+        OptionalJsonStringProperty("uid", customerUID) & _
+        JsonString("created_at") & ":" & JsonString(Format$(signupDate, "yyyy-mm-dd\Thh:nn:ss\Z")) & "," & _
+        JsonString("skip_email_notification") & ":true" & _
+        "}"
+End Function
+
+Private Function OptionalQueryParam(ByVal paramName As String, ByVal paramValue As String) As String
+    paramValue = Trim$(paramValue)
+    If paramValue <> vbNullString Then
+        OptionalQueryParam = "&" & paramName & "=" & UrlEncode(paramValue)
+    End If
+End Function
+
+Private Function OptionalJsonStringProperty(ByVal propertyName As String, ByVal propertyValue As String) As String
+    propertyValue = Trim$(propertyValue)
+    If propertyValue <> vbNullString Then
+        OptionalJsonStringProperty = JsonString(propertyName) & ":" & JsonString(propertyValue) & ","
+    End If
 End Function
 
 Private Function IsFirstPromoterV2() As Boolean

@@ -25,7 +25,7 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 - Parser CSV BCE basato sulle intestazioni `TIME_PERIOD` e `OBS_VALUE`, con supporto per campi quotati.
 - Conversione EUR/USD coerente con il tasso BCE `USD per 1 EUR`: importi USD convertiti in EUR con `amount / rate`; importi EUR lasciati invariati.
 - Filtri indipendenti per `Already Paid` e `To Be Paid`, con righe verdi per pagati e gialle per da pagare.
-- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe e colonna Coupon inviata sia come `promo_code` sia come `ref_id` per attribuire la vendita al promoter. Supporta API v1 con query string e `X-API-KEY`, oppure API v2 con JSON, `Authorization: Bearer` e `Account-ID`.
+- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe e colonna Coupon inviata sia come `promo_code` sia come `ref_id` per attribuire la vendita al promoter. Se disponibile, lo Stripe Customer ID viene inviato come `uid`. In API v2 il modulo crea prima il lead via `/track/signup` con `created_at` storico e poi registra la sale.
 
 ## Troubleshooting invio FirstPromoter
 
@@ -79,6 +79,23 @@ In quel caso controlla:
 - Se Excel segnala errori su `NumberFormat`, la formattazione e solo estetica: il modulo usa `SetNumberFormatSafe` per non bloccare l'import quando Excel non accetta un formato locale.
 - Le scritture su log e colonna stato sono non bloccanti, cosi una cella protetta/formattata non interrompe l'invio gia effettuato.
 
+
+### Date storiche e `uid`
+
+Per API v2 il modulo invia prima una signup storica:
+
+```json
+{
+  "email": "cliente@example.com",
+  "uid": "cus_...",
+  "ref_id": "GO20",
+  "created_at": "2026-05-10T00:00:00Z",
+  "skip_email_notification": true
+}
+```
+
+Poi invia la sale. Questo evita che i nuovi lead/customer importati vengano creati con data odierna. Se un lead/customer e gia stato creato da un test precedente con data odierna, FirstPromoter potrebbe non aggiornare quella data: in quel caso va corretto/eliminato lato FirstPromoter prima di reimportare.
+
 ## Layout atteso
 
 ### `Payments`
@@ -95,10 +112,11 @@ Il modulo cerca le intestazioni nelle prime 10 righe. Se non le trova, usa il la
 | F | `Refunded date UTC` |
 | G | `Customer Email` |
 | H | `Dispute Date UTC` |
+| opzionale | `Customer ID`, `Customer`, oppure `Stripe Customer ID` per inviare `uid` a FirstPromoter |
 
 ### `Filter_Output`
 
 - `B4`: lista coupon separati da virgola, punto e virgola o nuova riga.
 - `B5:D5`: intervallo `Already Paid`.
 - `B6:D6`: intervallo `To Be Paid`.
-- Output dalla riga 11, colonne `A:K`; la colonna `K` viene usata come stato importazione (`No`, `Yes`, `Error`).
+- Output dalla riga 11, colonne `A:L`; la colonna `K` viene usata come stato importazione (`No`, `Yes`, `Error`, `No Referral`, `Duplicate`); la colonna `L` contiene lo Stripe Customer ID / `uid` quando disponibile.
