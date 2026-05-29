@@ -9,7 +9,7 @@ Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 Private Declare Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 #End If
 
-' Optional fallback if you do not use a workbook-level named range called FP_API_KEY.
+' Put your FirstPromoter API key between the quotes before running SendToFirstPromoter.
 Private Const FP_API_KEY As String = ""
 Private Const FP_TRACK_URL As String = "https://firstpromoter.com/api/v1/track/sale"
 Private Const ECB_URL As String = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?format=csvdata&startPeriod=2023-05-01"
@@ -826,31 +826,12 @@ Private Function UrlEncode(ByVal value As String) As String
 End Function
 
 Private Function GetFirstPromoterApiKey() As String
-    Dim apiKey As String
-    apiKey = GetWorkbookNamedValue("FP_API_KEY")
-
-    If apiKey = vbNullString Then apiKey = FP_API_KEY
-
-    If apiKey = vbNullString Then
+    If Trim$(FP_API_KEY) = vbNullString Then
         Err.Raise vbObjectError + 1501, "GetFirstPromoterApiKey", _
-            "FirstPromoter API key is missing. Create a workbook-level named range called FP_API_KEY, " & _
-            "or set the FP_API_KEY constant in this module."
+            "FirstPromoter API key is missing. Set the FP_API_KEY constant in this module."
     End If
 
-    GetFirstPromoterApiKey = apiKey
-End Function
-
-Private Function GetWorkbookNamedValue(ByVal nameText As String) As String
-    On Error GoTo MissingName
-
-    Dim wb As Workbook
-    Set wb = GetToolWorkbook()
-
-    GetWorkbookNamedValue = Trim$(CStr(wb.Names(nameText).RefersToRange.Value))
-    Exit Function
-
-MissingName:
-    GetWorkbookNamedValue = vbNullString
+    GetFirstPromoterApiKey = Trim$(FP_API_KEY)
 End Function
 
 Private Sub SleepMs(ByVal milliseconds As Long)
