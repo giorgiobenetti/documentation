@@ -431,7 +431,7 @@ Public Sub SendToFirstPromoter()
         stage = "Validate promo code"
         coupon = Trim$(CStr(wsO.Cells(i, 4).Value))
         If coupon = vbNullString Then
-            Err.Raise vbObjectError + 1703, "SendToFirstPromoter", "Missing promo_code / tracking coupon in Filter_Output column D."
+            Err.Raise vbObjectError + 1703, "SendToFirstPromoter", "Missing promo_code/ref_id in Filter_Output column D."
         End If
 
         stage = "Validate EUR amount"
@@ -646,7 +646,7 @@ Public Sub DiagnoseFirstPromoterSelectedRow()
 
     MsgBox "Local validation OK. No request was sent." & vbCrLf & vbCrLf & _
            "Checks:" & vbCrLf & _
-           "- promo_code is column D and must be an active unique promoter-level Tracking Coupon in FirstPromoter." & vbCrLf & _
+           "- column D is sent both as promo_code and ref_id." & vbCrLf & _
            "- email is the Stripe customer/lead email, not the promoter email." & vbCrLf & _
            "- event_id is the Stripe payment id and must be unique." & vbCrLf & _
            "- API mode: " & FirstPromoterApiMode() & vbCrLf & vbCrLf & _
@@ -1094,6 +1094,7 @@ Private Function BuildFirstPromoterSaleQuery(ByVal payID As String, _
                                              ByVal coupon As String, _
                                              ByVal amountEUR As Double) As String
     BuildFirstPromoterSaleQuery = "promo_code=" & UrlEncode(Trim$(coupon)) & _
+        "&ref_id=" & UrlEncode(Trim$(coupon)) & _
         "&email=" & UrlEncode(NormalizeEmail(custEmail)) & _
         "&amount=" & CStr(AmountToCents(amountEUR)) & _
         "&currency=eur" & _
@@ -1108,6 +1109,7 @@ Private Function BuildFirstPromoterSaleJson(ByVal payID As String, _
                                             ByVal amountEUR As Double) As String
     BuildFirstPromoterSaleJson = "{" & _
         JsonString("promo_code") & ":" & JsonString(Trim$(coupon)) & "," & _
+        JsonString("ref_id") & ":" & JsonString(Trim$(coupon)) & "," & _
         JsonString("email") & ":" & JsonString(NormalizeEmail(custEmail)) & "," & _
         JsonString("amount") & ":" & CStr(AmountToCents(amountEUR)) & "," & _
         JsonString("currency") & ":" & JsonString("eur") & "," & _

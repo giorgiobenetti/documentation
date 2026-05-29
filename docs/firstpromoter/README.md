@@ -25,7 +25,7 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 - Parser CSV BCE basato sulle intestazioni `TIME_PERIOD` e `OBS_VALUE`, con supporto per campi quotati.
 - Conversione EUR/USD coerente con il tasso BCE `USD per 1 EUR`: importi USD convertiti in EUR con `amount / rate`; importi EUR lasciati invariati.
 - Filtri indipendenti per `Already Paid` e `To Be Paid`, con righe verdi per pagati e gialle per da pagare.
-- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe e `promo_code` per attribuire la vendita al coupon FirstPromoter. Supporta API v1 con query string e `X-API-KEY`, oppure API v2 con JSON, `Authorization: Bearer` e `Account-ID`.
+- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe e colonna Coupon inviata sia come `promo_code` sia come `ref_id` per attribuire la vendita al promoter. Supporta API v1 con query string e `X-API-KEY`, oppure API v2 con JSON, `Authorization: Bearer` e `Account-ID`.
 
 ## Troubleshooting invio FirstPromoter
 
@@ -58,7 +58,7 @@ Se alcune righe risultano inviate ma non compaiono in FirstPromoter, controlla `
 | A | Timestamp |
 | B | Riga in `Filter_Output` |
 | C | Payment ID |
-| D | Coupon / promo code |
+| D | Coupon / promo code, inviato anche come `ref_id` |
 | E | Importo EUR |
 | F | HTTP status (`200`, `204`, `400`, `404`, `409`, `0`, ecc.) |
 | G | Significato sintetico |
