@@ -14,8 +14,10 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 2. Premi `ALT+F11` per aprire l'editor VBA.
 3. Rimuovi o rinomina il vecchio modulo `FP_Import_Tool`.
 4. Usa `File > Import File...` e importa `FP_Import_Tool.bas`. In alternativa, puoi copiare/incollare il contenuto in un modulo standard; in questo caso il file fornito non contiene righe `Attribute`, che in VBE causano errore di sintassi se incollate manualmente.
-5. Imposta la costante `FP_API_KEY` nel modulo.
-6. Se il tuo account e FirstPromoter v2, imposta anche `FP_ACCOUNT_ID`; se resta vuota, il modulo usa la API legacy v1.
+5. Imposta la costante `FP_API_KEY` nel modulo usando la chiave corretta per la modalita API scelta.
+   - API v2: usa la `API key` normale e imposta anche `FP_ACCOUNT_ID`.
+   - API v1 legacy: usa la `Legacy API key` e lascia `FP_ACCOUNT_ID` vuoto.
+6. Se il tuo account e FirstPromoter v2, imposta `FP_ACCOUNT_ID`; se resta vuota, il modulo usa la API legacy v1.
 
 ## Correzioni incluse
 
@@ -34,7 +36,7 @@ La documentazione FirstPromoter e divisa in due flussi:
 - v1: `POST https://firstpromoter.com/api/v1/track/sale`, parametri in query string, header `X-API-KEY`, risposta `204` quando non viene trovata una referral sale.
 - v2: `POST https://api.firstpromoter.com/api/v2/track/sale`, JSON body, header `Authorization: Bearer <API key>` e `Account-ID`, risposta `404` quando referral/promoter non vengono trovati.
 
-Se stai usando la UI FirstPromoter v2 e la sezione Tracking Coupons, imposta `FP_ACCOUNT_ID` con l'Account ID indicato in Settings > Integrations. Questo forza il modulo a usare la API v2.
+Se stai usando la UI FirstPromoter v2 e la sezione Tracking Coupons, imposta `FP_ACCOUNT_ID` con l'Account ID indicato in Settings > Integrations e usa la `API key` normale, non la `Legacy API key`. Questo forza il modulo a usare la API v2.
 
 ### Verifica locale senza inviare
 

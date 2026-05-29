@@ -9,7 +9,9 @@ Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 Private Declare Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 #End If
 
-' Put your FirstPromoter API key between the quotes before running SendToFirstPromoter.
+' API key selection:
+' - v2: use the regular API key here and set FP_ACCOUNT_ID.
+' - v1 legacy: use the Legacy API key here and leave FP_ACCOUNT_ID empty.
 Private Const FP_API_KEY As String = ""
 ' FirstPromoter v2 requires Account-ID. Leave empty to use legacy v1.
 Private Const FP_ACCOUNT_ID As String = ""
