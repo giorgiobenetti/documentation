@@ -9,8 +9,8 @@ Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 Private Declare Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 #End If
 
-Private Const FP_API_KEY_PLACEHOLDER As String = "PUT_YOUR_FIRSTPROMOTER_API_KEY_HERE"
-Private Const FP_API_KEY As String = FP_API_KEY_PLACEHOLDER
+' Optional fallback if you do not use a workbook-level named range called FP_API_KEY.
+Private Const FP_API_KEY As String = ""
 Private Const FP_TRACK_URL As String = "https://firstpromoter.com/api/v1/track/sale"
 Private Const ECB_URL As String = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?format=csvdata&startPeriod=2023-05-01"
 
@@ -831,7 +831,7 @@ Private Function GetFirstPromoterApiKey() As String
 
     If apiKey = vbNullString Then apiKey = FP_API_KEY
 
-    If apiKey = vbNullString Or apiKey = FP_API_KEY_PLACEHOLDER Then
+    If apiKey = vbNullString Then
         Err.Raise vbObjectError + 1501, "GetFirstPromoterApiKey", _
             "FirstPromoter API key is missing. Create a workbook-level named range called FP_API_KEY, " & _
             "or set the FP_API_KEY constant in this module."
