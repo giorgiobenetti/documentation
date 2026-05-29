@@ -13,7 +13,7 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 1. Apri il file `.xlsm` in Excel per Windows.
 2. Premi `ALT+F11` per aprire l'editor VBA.
 3. Rimuovi o rinomina il vecchio modulo `FP_Import_Tool`.
-4. Usa `File > Import File...` e importa `FP_Import_Tool.bas`.
+4. Usa `File > Import File...` e importa `FP_Import_Tool.bas`. In alternativa, puoi copiare/incollare il contenuto in un modulo standard; in questo caso il file fornito non contiene righe `Attribute`, che in VBE causano errore di sintassi se incollate manualmente.
 5. Crea una Named Range workbook-level chiamata `FP_API_KEY` con la chiave API FirstPromoter.
    - In alternativa, imposta la costante `FP_API_KEY` nel modulo prima di importarlo.
 
