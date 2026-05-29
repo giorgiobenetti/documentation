@@ -49,7 +49,22 @@ Se alcune righe risultano inviate ma non compaiono in FirstPromoter, controlla `
 - `409` = `event_id` duplicato, la vendita era gia stata inviata;
 - `0` = errore HTTP/VBA prima di ricevere una risposta API.
 
-Il payload inviato viene scritto in colonna H del log per verificare `promo_code`, `email`, `amount` ed `event_id`. In v1 sara una query string; in v2 sara JSON.
+`FP_Import_Log` viene compilato dalla riga 4 con queste colonne diagnostiche:
+
+| Colonna | Contenuto |
+| --- | --- |
+| A | Timestamp |
+| B | Riga in `Filter_Output` |
+| C | Payment ID |
+| D | Coupon / promo code |
+| E | Importo EUR |
+| F | HTTP status (`200`, `204`, `400`, `404`, `409`, `0`, ecc.) |
+| G | Significato sintetico |
+| H | Response API oppure errore VBA con stage |
+| I | Payload inviato; in v1 query string, in v2 JSON |
+| J | API mode usata (`v1` o `v2`) |
+
+Se il log non si compila, la macro ora mostra un errore esplicito: controlla che `FP_Import_Log` non sia protetto e che le celle A:J siano scrivibili.
 
 Se `SendToFirstPromoter` mostra `Operazione terminata`, la richiesta HTTP e stata interrotta da Excel/Windows/MSXML prima di ricevere una risposta API. La versione aggiornata usa `MSXML2.ServerXMLHTTP.6.0` e registra l'errore per singola riga in `FP_Import_Log` con stato `0`, invece di fermare tutto l'import.
 

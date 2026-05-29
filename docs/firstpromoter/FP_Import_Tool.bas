@@ -358,51 +358,100 @@ Public Sub SendToFirstPromoter()
         Exit Sub
     End If
 
+    EnsureFirstPromoterLogHeaders wsLog
+
     Dim confirm As VbMsgBoxResult
-    confirm = MsgBox("Send " & (lastRow - OUTPUT_FIRST_ROW + 1) & " transactions to FirstPromoter?", vbYesNo + vbQuestion)
+    confirm = MsgBox("Send " & (lastRow - OUTPUT_FIRST_ROW + 1) & " transactions to FirstPromoter?" & vbCrLf & vbCrLf & _
+                     "Every attempted row will be written to FP_Import_Log.", vbYesNo + vbQuestion)
     If confirm = vbNo Then Exit Sub
 
     Dim logRow As Long
-    logRow = wsLog.Cells(wsLog.Rows.Count, 1).End(xlUp).Row + 1
-    If logRow < MAP_FIRST_ROW Then logRow = MAP_FIRST_ROW
+    logRow = NextFirstPromoterLogRow(wsLog)
 
     Dim i As Long
     Dim successCount As Long
     Dim noReferralCount As Long
     Dim duplicateCount As Long
     Dim errorCount As Long
+    Dim skippedCount As Long
     successCount = 0
     noReferralCount = 0
     duplicateCount = 0
     errorCount = 0
+    skippedCount = 0
 
     For i = OUTPUT_FIRST_ROW To lastRow
+        Dim stage As String
         Dim payID As String
-        payID = Trim$(CStr(wsO.Cells(i, 1).Value))
-        If payID = vbNullString Then GoTo NextSend
-
-        If UCase$(Trim$(CStr(wsO.Cells(i, 11).Value))) = "YES" Then GoTo NextSend
-
         Dim payDate As Date
         Dim custEmail As String
         Dim coupon As String
         Dim amountEUR As Double
-
-        If Not TryParseDate(wsO.Cells(i, 2).Value, payDate) Then GoTo NextSend
-        custEmail = NormalizeEmail(wsO.Cells(i, 3).Value)
-        coupon = Trim$(CStr(wsO.Cells(i, 4).Value))
-        If Not TryParseNumber(wsO.Cells(i, 8).Value, amountEUR) Then GoTo NextSend
-        If amountEUR <= 0 Then GoTo NextSend
-
         Dim requestPayload As String
-        requestPayload = BuildFirstPromoterSalePayload(payID, payDate, custEmail, coupon, amountEUR)
-
         Dim fpStatus As Long
         Dim fpResponse As String
+        Dim resultLabel As String
+
+        stage = "Read row"
+        payID = vbNullString
+        custEmail = vbNullString
+        coupon = vbNullString
+        amountEUR = 0
+        requestPayload = vbNullString
+        fpStatus = 0
+        fpResponse = vbNullString
+        resultLabel = vbNullString
+
+        On Error GoTo RowFailed
+
+        payID = Trim$(CStr(wsO.Cells(i, 1).Value))
+        If payID = vbNullString Then
+            skippedCount = skippedCount + 1
+            GoTo RowComplete
+        End If
+
+        If UCase$(Trim$(CStr(wsO.Cells(i, 11).Value))) = "YES" Then
+            skippedCount = skippedCount + 1
+            GoTo RowComplete
+        End If
+
+        stage = "Validate payment date"
+        If Not TryParseDate(wsO.Cells(i, 2).Value, payDate) Then
+            Err.Raise vbObjectError + 1701, "SendToFirstPromoter", "Invalid payment date in Filter_Output column B."
+        End If
+
+        stage = "Validate customer email"
+        custEmail = NormalizeEmail(wsO.Cells(i, 3).Value)
+        If custEmail = vbNullString Or InStr(1, custEmail, "@", vbTextCompare) = 0 Then
+            Err.Raise vbObjectError + 1702, "SendToFirstPromoter", "Missing or invalid customer email in Filter_Output column C."
+        End If
+
+        stage = "Validate promo code"
+        coupon = Trim$(CStr(wsO.Cells(i, 4).Value))
+        If coupon = vbNullString Then
+            Err.Raise vbObjectError + 1703, "SendToFirstPromoter", "Missing promo_code / tracking coupon in Filter_Output column D."
+        End If
+
+        stage = "Validate EUR amount"
+        If Not TryParseNumber(wsO.Cells(i, 8).Value, amountEUR) Then
+            Err.Raise vbObjectError + 1704, "SendToFirstPromoter", "Invalid EUR amount in Filter_Output column H."
+        End If
+        If amountEUR <= 0 Then
+            Err.Raise vbObjectError + 1705, "SendToFirstPromoter", "EUR amount must be greater than zero."
+        End If
+
+        stage = "Build FirstPromoter payload"
+        requestPayload = BuildFirstPromoterSalePayload(payID, payDate, custEmail, coupon, amountEUR)
+
+        stage = "HTTP request to FirstPromoter"
         Call PostFirstPromoterSale(requestPayload, apiKey, fpStatus, fpResponse)
+        resultLabel = FirstPromoterResultLabel(fpStatus)
 
-        WriteFirstPromoterLog wsLog, logRow, payID, coupon, amountEUR, fpStatus, fpResponse, requestPayload
+        stage = "Write FirstPromoter log"
+        WriteFirstPromoterLog wsLog, logRow, i, stage, payID, coupon, amountEUR, fpStatus, resultLabel, fpResponse, requestPayload
+        logRow = logRow + 1
 
+        stage = "Update Filter_Output status"
         Select Case fpStatus
             Case 200
                 SetImportStatusSafe wsO, i, "Yes", RGB(212, 237, 218)
@@ -418,47 +467,116 @@ Public Sub SendToFirstPromoter()
                 errorCount = errorCount + 1
         End Select
 
-        logRow = logRow + 1
         SleepMs 300
+        GoTo RowComplete
 
-NextSend:
+RowFailed:
+        Dim rowErrNumber As Long
+        Dim rowErrDescription As String
+        rowErrNumber = Err.Number
+        rowErrDescription = Err.Description
+        Err.Clear
+
+        fpStatus = 0
+        resultLabel = "VBA error before/during send"
+        fpResponse = "Stage: " & stage & " | Error " & rowErrNumber & ": " & rowErrDescription
+
+        On Error GoTo RowLogFailed
+        WriteFirstPromoterLog wsLog, logRow, i, stage, payID, coupon, amountEUR, fpStatus, resultLabel, fpResponse, requestPayload
+        logRow = logRow + 1
+        SetImportStatusSafe wsO, i, "Error", RGB(248, 215, 218)
+        errorCount = errorCount + 1
+        On Error GoTo CleanFail
+        GoTo RowComplete
+
+RowLogFailed:
+        MsgBox "Cannot write to FP_Import_Log." & vbCrLf & _
+               "Output row: " & i & vbCrLf & _
+               "Original stage: " & stage & vbCrLf & _
+               "Original error: " & rowErrNumber & " - " & rowErrDescription & vbCrLf & _
+               "Log error: " & Err.Number & " - " & Err.Description & vbCrLf & vbCrLf & _
+               "Check that FP_Import_Log exists, is not protected, and has writable cells.", vbCritical
+        Exit Sub
+
+RowComplete:
+        On Error GoTo CleanFail
     Next i
 
     MsgBox "Import complete." & vbCrLf & _
            "Tracked sales: " & successCount & vbCrLf & _
-           "No referral (204): " & noReferralCount & vbCrLf & _
+           "No referral (204/404): " & noReferralCount & vbCrLf & _
            "Duplicates (409): " & duplicateCount & vbCrLf & _
-           "Errors: " & errorCount, vbInformation
+           "Errors: " & errorCount & vbCrLf & _
+           "Skipped: " & skippedCount, vbInformation
     Exit Sub
 
 CleanFail:
-    MsgBox "SendToFirstPromoter failed:" & vbCrLf & _
+    MsgBox "SendToFirstPromoter failed before row processing/logging:" & vbCrLf & _
            "Error " & Err.Number & ": " & Err.Description, vbCritical
 End Sub
 
+Private Sub EnsureFirstPromoterLogHeaders(ByVal wsLog As Worksheet)
+    On Error GoTo HeaderFailed
+
+    wsLog.Cells(3, 1).Value = "Timestamp"
+    wsLog.Cells(3, 2).Value = "Output Row"
+    wsLog.Cells(3, 3).Value = "Payment ID"
+    wsLog.Cells(3, 4).Value = "Coupon/Promo Code"
+    wsLog.Cells(3, 5).Value = "Amount EUR"
+    wsLog.Cells(3, 6).Value = "HTTP Status"
+    wsLog.Cells(3, 7).Value = "Result"
+    wsLog.Cells(3, 8).Value = "Response / VBA Error"
+    wsLog.Cells(3, 9).Value = "Payload"
+    wsLog.Cells(3, 10).Value = "API Mode"
+    Exit Sub
+
+HeaderFailed:
+    Err.Raise vbObjectError + 1801, "EnsureFirstPromoterLogHeaders", _
+        "Cannot write headers to FP_Import_Log. Is the sheet protected or locked? " & _
+        "Excel error " & Err.Number & ": " & Err.Description
+End Sub
+
+Private Function NextFirstPromoterLogRow(ByVal wsLog As Worksheet) As Long
+    Dim lastRow As Long
+    lastRow = wsLog.Cells(wsLog.Rows.Count, 1).End(xlUp).Row
+    If lastRow < MAP_FIRST_ROW Then
+        NextFirstPromoterLogRow = MAP_FIRST_ROW
+    Else
+        NextFirstPromoterLogRow = lastRow + 1
+    End If
+End Function
+
 Private Sub WriteFirstPromoterLog(ByVal wsLog As Worksheet, _
                                    ByVal logRow As Long, _
+                                   ByVal outputRow As Long, _
+                                   ByVal stage As String, _
                                    ByVal payID As String, _
                                    ByVal coupon As String, _
                                    ByVal amountEUR As Double, _
                                    ByVal fpStatus As Long, _
+                                   ByVal resultLabel As String, _
                                    ByVal fpResponse As String, _
-                                   ByVal postBody As String)
-    On Error Resume Next
+                                   ByVal requestPayload As String)
+    On Error GoTo LogFailed
 
     wsLog.Cells(logRow, 1).Value = Now
     SetNumberFormatSafe wsLog.Cells(logRow, 1), "dd/mm/yyyy hh:mm:ss"
-    wsLog.Cells(logRow, 2).Value = payID
-    wsLog.Cells(logRow, 3).Value = coupon
-    wsLog.Cells(logRow, 4).Value = Round(amountEUR, 2)
-    SetNumberFormatSafe wsLog.Cells(logRow, 4), "#,##0.00"
-    wsLog.Cells(logRow, 5).Value = fpStatus
-    wsLog.Cells(logRow, 6).Value = fpResponse
-    wsLog.Cells(logRow, 7).Value = FirstPromoterResultLabel(fpStatus)
-    wsLog.Cells(logRow, 8).Value = postBody
+    wsLog.Cells(logRow, 2).Value = outputRow
+    wsLog.Cells(logRow, 3).Value = payID
+    wsLog.Cells(logRow, 4).Value = coupon
+    wsLog.Cells(logRow, 5).Value = Round(amountEUR, 2)
+    SetNumberFormatSafe wsLog.Cells(logRow, 5), "#,##0.00"
+    wsLog.Cells(logRow, 6).Value = fpStatus
+    wsLog.Cells(logRow, 7).Value = resultLabel
+    wsLog.Cells(logRow, 8).Value = fpResponse
+    wsLog.Cells(logRow, 9).Value = requestPayload
+    wsLog.Cells(logRow, 10).Value = FirstPromoterApiMode()
+    Exit Sub
 
-    Err.Clear
-    On Error GoTo 0
+LogFailed:
+    Err.Raise vbObjectError + 1802, "WriteFirstPromoterLog", _
+        "Cannot write diagnostic log row " & logRow & " to FP_Import_Log. Stage: " & stage & _
+        ". Excel error " & Err.Number & ": " & Err.Description
 End Sub
 
 Private Sub SetImportStatusSafe(ByVal ws As Worksheet, _
