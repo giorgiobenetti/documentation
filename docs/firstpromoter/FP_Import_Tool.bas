@@ -246,12 +246,12 @@ Public Sub GenerateOutput()
         If Not TryParseNumber(wsP.Cells(i, colAmount).Value, amount) Then GoTo NextPaymentRow
         If Not TryParseNumber(wsP.Cells(i, colRefundedAmount).Value, amountRefunded) Then amountRefunded = 0
 
-        Dim currency As String
+        Dim paymentCurrency As String
         Dim refundDate As String
         Dim custEmail As String
         Dim disputeDate As String
 
-        currency = UCase$(Trim$(CStr(wsP.Cells(i, colCurrency).Value)))
+        paymentCurrency = UCase$(Trim$(CStr(wsP.Cells(i, colCurrency).Value)))
         refundDate = Trim$(CStr(wsP.Cells(i, colRefundedDate).Value))
         custEmail = NormalizeEmail(wsP.Cells(i, colEmail).Value)
         disputeDate = Trim$(CStr(wsP.Cells(i, colDisputeDate).Value))
@@ -283,7 +283,7 @@ Public Sub GenerateOutput()
         Dim amountEUR As Double
         Dim rate As Double
 
-        Select Case currency
+        Select Case paymentCurrency
             Case "EUR"
                 amountEUR = amount
                 rate = 1
@@ -311,7 +311,7 @@ Public Sub GenerateOutput()
         wsO.Cells(outRow, 5).Value = affiliateName
         wsO.Cells(outRow, 6).Value = amount
         wsO.Cells(outRow, 6).NumberFormat = "#,##0.00"
-        wsO.Cells(outRow, 7).Value = currency
+        wsO.Cells(outRow, 7).Value = paymentCurrency
         wsO.Cells(outRow, 8).Value = Round(amountEUR, 2)
         wsO.Cells(outRow, 8).NumberFormat = "#,##0.00"
         wsO.Cells(outRow, 9).Value = Round(rate, 4)
