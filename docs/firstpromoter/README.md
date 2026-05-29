@@ -26,10 +26,15 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 
 ## Troubleshooting invio FirstPromoter
 
+### Verifica locale senza inviare
+
+Usa `DiagnoseFirstPromoterSelectedRow` selezionando una riga in `Filter_Output`: la macro non invia nulla a FirstPromoter, ma verifica che id pagamento, data, email cliente, coupon, importo EUR e API key siano leggibili, poi mostra la query che verrebbe inviata.
+
 Se alcune righe risultano inviate ma non compaiono in FirstPromoter, controlla `FP_Import_Log`:
 
 - `200` = vendita tracciata e commissione generata;
-- `204` = nessun lead/referral trovato, quindi nessuna commissione generata;
+- `2024` non e uno status HTTP FirstPromoter valido: se lo vedi come errore VBA/Excel, controlla in quale colonna viene scritto e usa `DiagnoseFirstPromoterSelectedRow`;
+- `204` = nessun lead/referral trovato, oppure `promo_code` non associato a un Tracking Coupon unico/attivo del promoter;
 - `409` = `event_id` duplicato, la vendita era gia stata inviata;
 - `0` = errore HTTP/VBA prima di ricevere una risposta API.
 

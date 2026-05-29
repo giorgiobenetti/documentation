@@ -391,17 +391,8 @@ Public Sub SendToFirstPromoter()
         If Not TryParseNumber(wsO.Cells(i, 8).Value, amountEUR) Then GoTo NextSend
         If amountEUR <= 0 Then GoTo NextSend
 
-        Dim amountCents As Long
-        amountCents = AmountToCents(amountEUR)
-
         Dim postBody As String
-        postBody = "promo_code=" & UrlEncode(coupon) & _
-                   "&email=" & UrlEncode(custEmail) & _
-                   "&amount=" & CStr(amountCents) & _
-                   "&currency=eur" & _
-                   "&event_id=" & UrlEncode(payID) & _
-                   "&created_at=" & UrlEncode(Format$(payDate, "yyyy-mm-dd\Thh:nn:ss\Z")) & _
-                   "&skip_email_notification=true"
+        postBody = BuildFirstPromoterSaleQuery(payID, payDate, custEmail, coupon, amountEUR)
 
         Dim fpStatus As Long
         Dim fpResponse As String
@@ -478,6 +469,69 @@ Private Sub SetImportStatusSafe(ByVal ws As Worksheet, _
 
     Err.Clear
     On Error GoTo 0
+End Sub
+
+' ---------------------------------------------
+' Diagnostica: verifica riga selezionata senza inviare a FirstPromoter
+' ---------------------------------------------
+Public Sub DiagnoseFirstPromoterSelectedRow()
+    On Error GoTo CleanFail
+
+    Dim wsO As Worksheet
+    Set wsO = GetToolWorksheet(SHEET_FILTER_OUTPUT)
+
+    If ActiveCell Is Nothing Then
+        MsgBox "Select one output row in Filter_Output first.", vbExclamation
+        Exit Sub
+    End If
+
+    If NormalizeSheetName(ActiveCell.Worksheet.Name) <> NormalizeSheetName(wsO.Name) Then
+        MsgBox "Select one output row in the Filter_Output sheet first.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim rowNumber As Long
+    rowNumber = ActiveCell.Row
+    If rowNumber < OUTPUT_FIRST_ROW Then
+        MsgBox "Select a transaction row from row " & OUTPUT_FIRST_ROW & " onward.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim payID As String
+    Dim payDate As Date
+    Dim custEmail As String
+    Dim coupon As String
+    Dim amountEUR As Double
+
+    payID = Trim$(CStr(wsO.Cells(rowNumber, 1).Value))
+    If payID = vbNullString Then Err.Raise vbObjectError + 1601, "DiagnoseFirstPromoterSelectedRow", "Missing Stripe payment id in column A."
+    If Not TryParseDate(wsO.Cells(rowNumber, 2).Value, payDate) Then Err.Raise vbObjectError + 1602, "DiagnoseFirstPromoterSelectedRow", "Invalid payment date in column B."
+
+    custEmail = NormalizeEmail(wsO.Cells(rowNumber, 3).Value)
+    If custEmail = vbNullString Or InStr(1, custEmail, "@", vbTextCompare) = 0 Then Err.Raise vbObjectError + 1603, "DiagnoseFirstPromoterSelectedRow", "Missing or invalid customer email in column C."
+
+    coupon = Trim$(CStr(wsO.Cells(rowNumber, 4).Value))
+    If coupon = vbNullString Then Err.Raise vbObjectError + 1604, "DiagnoseFirstPromoterSelectedRow", "Missing promo/tracking coupon in column D."
+
+    If Not TryParseNumber(wsO.Cells(rowNumber, 8).Value, amountEUR) Then Err.Raise vbObjectError + 1605, "DiagnoseFirstPromoterSelectedRow", "Invalid EUR amount in column H."
+    If amountEUR <= 0 Then Err.Raise vbObjectError + 1606, "DiagnoseFirstPromoterSelectedRow", "EUR amount must be greater than zero."
+
+    Call GetFirstPromoterApiKey
+
+    Dim queryString As String
+    queryString = BuildFirstPromoterSaleQuery(payID, payDate, custEmail, coupon, amountEUR)
+
+    MsgBox "Local validation OK. No request was sent." & vbCrLf & vbCrLf & _
+           "Checks:" & vbCrLf & _
+           "- promo_code is column D and must be an active unique promoter-level Tracking Coupon in FirstPromoter." & vbCrLf & _
+           "- email is the Stripe customer/lead email, not the promoter email." & vbCrLf & _
+           "- event_id is the Stripe payment id and must be unique." & vbCrLf & vbCrLf & _
+           "Query:" & vbCrLf & queryString, vbInformation
+    Exit Sub
+
+CleanFail:
+    MsgBox "DiagnoseFirstPromoterSelectedRow failed:" & vbCrLf & _
+           "Error " & Err.Number & ": " & Err.Description, vbCritical
 End Sub
 
 Private Function FirstPromoterResultLabel(ByVal fpStatus As Long) As String
@@ -884,6 +938,20 @@ Private Sub ApplyStatusFill(ByVal targetRange As Range, ByVal statusText As Stri
     Err.Clear
     On Error GoTo 0
 End Sub
+
+Private Function BuildFirstPromoterSaleQuery(ByVal payID As String, _
+                                             ByVal payDate As Date, _
+                                             ByVal custEmail As String, _
+                                             ByVal coupon As String, _
+                                             ByVal amountEUR As Double) As String
+    BuildFirstPromoterSaleQuery = "promo_code=" & UrlEncode(Trim$(coupon)) & _
+        "&email=" & UrlEncode(NormalizeEmail(custEmail)) & _
+        "&amount=" & CStr(AmountToCents(amountEUR)) & _
+        "&currency=eur" & _
+        "&event_id=" & UrlEncode(Trim$(payID)) & _
+        "&created_at=" & UrlEncode(Format$(payDate, "yyyy-mm-dd\Thh:nn:ss\Z")) & _
+        "&skip_email_notification=true"
+End Function
 
 Private Function AmountToCents(ByVal amountEUR As Double) As Long
     AmountToCents = CLng(Fix((amountEUR * 100) + 0.5))
