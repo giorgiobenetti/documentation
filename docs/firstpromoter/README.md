@@ -14,7 +14,8 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 2. Premi `ALT+F11` per aprire l'editor VBA.
 3. Rimuovi o rinomina il vecchio modulo `FP_Import_Tool`.
 4. Usa `File > Import File...` e importa `FP_Import_Tool.bas`. In alternativa, puoi copiare/incollare il contenuto in un modulo standard; in questo caso il file fornito non contiene righe `Attribute`, che in VBE causano errore di sintassi se incollate manualmente.
-5. Imposta la costante `FP_API_KEY` nel modulo, ad esempio `Private Const FP_API_KEY As String = "sk_live_..."`.
+5. Imposta la costante `FP_API_KEY` nel modulo.
+6. Se il tuo account e FirstPromoter v2, imposta anche `FP_ACCOUNT_ID`; se resta vuota, il modulo usa la API legacy v1.
 
 ## Correzioni incluse
 
@@ -22,9 +23,18 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 - Parser CSV BCE basato sulle intestazioni `TIME_PERIOD` e `OBS_VALUE`, con supporto per campi quotati.
 - Conversione EUR/USD coerente con il tasso BCE `USD per 1 EUR`: importi USD convertiti in EUR con `amount / rate`; importi EUR lasciati invariati.
 - Filtri indipendenti per `Already Paid` e `To Be Paid`, con righe verdi per pagati e gialle per da pagare.
-- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe, parametro query `promo_code` per attribuire la vendita al coupon FirstPromoter, URL encoding dei parametri, timeout HTTP espliciti e marcatura `Yes` in colonna 11 solo dopo risposta HTTP 200.
+- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe e `promo_code` per attribuire la vendita al coupon FirstPromoter. Supporta API v1 con query string e `X-API-KEY`, oppure API v2 con JSON, `Authorization: Bearer` e `Account-ID`.
 
 ## Troubleshooting invio FirstPromoter
+
+### Scelta API v1/v2
+
+La documentazione FirstPromoter e divisa in due flussi:
+
+- v1: `POST https://firstpromoter.com/api/v1/track/sale`, parametri in query string, header `X-API-KEY`, risposta `204` quando non viene trovata una referral sale.
+- v2: `POST https://api.firstpromoter.com/api/v2/track/sale`, JSON body, header `Authorization: Bearer <API key>` e `Account-ID`, risposta `404` quando referral/promoter non vengono trovati.
+
+Se stai usando la UI FirstPromoter v2 e la sezione Tracking Coupons, imposta `FP_ACCOUNT_ID` con l'Account ID indicato in Settings > Integrations. Questo forza il modulo a usare la API v2.
 
 ### Verifica locale senza inviare
 
@@ -34,18 +44,19 @@ Se alcune righe risultano inviate ma non compaiono in FirstPromoter, controlla `
 
 - `200` = vendita tracciata e commissione generata;
 - `2024` non e uno status HTTP FirstPromoter valido: se lo vedi come errore VBA/Excel, controlla in quale colonna viene scritto e usa `DiagnoseFirstPromoterSelectedRow`;
-- `204` = nessun lead/referral trovato, oppure `promo_code` non associato a un Tracking Coupon unico/attivo del promoter;
+- `204` = v1: nessun lead/referral trovato, oppure `promo_code` non associato a un Tracking Coupon unico/attivo del promoter;
+- `404` = v2: referral/promoter non trovato oppure promoter bannato;
 - `409` = `event_id` duplicato, la vendita era gia stata inviata;
 - `0` = errore HTTP/VBA prima di ricevere una risposta API.
 
-La query inviata viene scritta in colonna H del log per verificare `promo_code`, `email`, `amount` ed `event_id`.
+Il payload inviato viene scritto in colonna H del log per verificare `promo_code`, `email`, `amount` ed `event_id`. In v1 sara una query string; in v2 sara JSON.
 
 Se `SendToFirstPromoter` mostra `Operazione terminata`, la richiesta HTTP e stata interrotta da Excel/Windows/MSXML prima di ricevere una risposta API. La versione aggiornata usa `MSXML2.ServerXMLHTTP.6.0` e registra l'errore per singola riga in `FP_Import_Log` con stato `0`, invece di fermare tutto l'import.
 
 In quel caso controlla:
 
 - che la costante `FP_API_KEY` sia valorizzata;
-- che il PC abbia accesso HTTPS a `https://firstpromoter.com`;
+- che il PC abbia accesso HTTPS a `https://firstpromoter.com` per v1 oppure `https://api.firstpromoter.com` per v2;
 - la colonna risposta in `FP_Import_Log`, che conterra il dettaglio `VBA HTTP error ...`;
 - eventuali proxy/firewall aziendali che interrompono le chiamate HTTPS da Excel/VBA.
 - Se Excel segnala errori su `NumberFormat`, la formattazione e solo estetica: il modulo usa `SetNumberFormatSafe` per non bloccare l'import quando Excel non accetta un formato locale.
