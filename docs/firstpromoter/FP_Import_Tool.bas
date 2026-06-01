@@ -16,6 +16,8 @@ Private Const FP_API_KEY As String = ""
 Private Const FP_LEGACY_API_KEY As String = ""
 ' FirstPromoter v2 requires Account-ID. Leave empty to use legacy v1.
 Private Const FP_ACCOUNT_ID As String = ""
+' Safety: historical paid rows must not create new payable commissions by default.
+Private Const FP_SEND_ALREADY_PAID As Boolean = False
 Private Const FP_TRACK_URL_V1 As String = "https://firstpromoter.com/api/v1/track/sale"
 Private Const FP_TRACK_URL_V2 As String = "https://api.firstpromoter.com/api/v2/track/sale"
 Private Const FP_SIGNUP_URL_V2 As String = "https://api.firstpromoter.com/api/v2/track/signup"
@@ -208,6 +210,13 @@ Public Sub GenerateOutput()
         Exit Sub
     End If
 
+    If hasPaidFilter And hasTobePaidFilter Then
+        If DateRangesOverlap(paidFrom, paidTo, tobePaidFrom, tobePaidTo) Then
+            Err.Raise vbObjectError + 1303, "GenerateOutput", _
+                "Paid and To Be Paid date ranges overlap. Fix Filter_Output B5:D5 and B6:D6 before generating output."
+        End If
+    End If
+
     Dim couponFilters As Object
     Set couponFilters = BuildCouponFilter(couponFilter)
 
@@ -397,6 +406,7 @@ Public Sub SendToFirstPromoter()
         Dim custEmail As String
         Dim coupon As String
         Dim customerUID As String
+        Dim payoutStatus As String
         Dim amountEUR As Double
         Dim requestPayload As String
         Dim fpStatus As Long
@@ -408,6 +418,7 @@ Public Sub SendToFirstPromoter()
         custEmail = vbNullString
         coupon = vbNullString
         customerUID = vbNullString
+        payoutStatus = vbNullString
         amountEUR = 0
         requestPayload = vbNullString
         fpStatus = 0
@@ -422,7 +433,9 @@ Public Sub SendToFirstPromoter()
             GoTo RowComplete
         End If
 
-        If UCase$(Trim$(CStr(wsO.Cells(i, 11).Value))) = "YES" Then
+        Dim importState As String
+        importState = UCase$(Trim$(CStr(wsO.Cells(i, 11).Value)))
+        If importState = "YES" Or Left$(importState, 7) = "SKIPPED" Then
             skippedCount = skippedCount + 1
             GoTo RowComplete
         End If
@@ -441,6 +454,7 @@ Public Sub SendToFirstPromoter()
         stage = "Validate promo code"
         coupon = Trim$(CStr(wsO.Cells(i, 4).Value))
         customerUID = Trim$(CStr(wsO.Cells(i, 12).Value))
+        payoutStatus = Trim$(CStr(wsO.Cells(i, 10).Value))
         If coupon = vbNullString Then
             Err.Raise vbObjectError + 1703, "SendToFirstPromoter", "Missing promo_code/ref_id in Filter_Output column D."
         End If
@@ -451,6 +465,24 @@ Public Sub SendToFirstPromoter()
         End If
         If amountEUR <= 0 Then
             Err.Raise vbObjectError + 1705, "SendToFirstPromoter", "EUR amount must be greater than zero."
+        End If
+
+        If Not ShouldSendPayoutStatus(payoutStatus) Then
+            stage = "Skip non-payable row"
+            fpStatus = 0
+            resultLabel = "Skipped - " & IIf(payoutStatus = vbNullString, "missing payout status", payoutStatus)
+            fpResponse = "Not sent to FirstPromoter. Only rows with status 'To Be Paid' are sent by default. " & _
+                "Row status is '" & payoutStatus & "'. Set FP_SEND_ALREADY_PAID=True only if you intentionally want to create commissions for already-paid historical rows."
+            requestPayload = vbNullString
+            WriteFirstPromoterLog wsLog, logRow, i, stage, payID, coupon, amountEUR, fpStatus, resultLabel, fpResponse, requestPayload
+            logRow = logRow + 1
+            If UCase$(payoutStatus) = "ALREADY PAID" Then
+                SetImportStatusSafe wsO, i, "Skipped Paid", RGB(212, 237, 218)
+            Else
+                SetImportStatusSafe wsO, i, "Skipped", RGB(255, 243, 205)
+            End If
+            skippedCount = skippedCount + 1
+            GoTo RowComplete
         End If
 
         stage = "Build FirstPromoter payload"
@@ -671,6 +703,17 @@ CleanFail:
     MsgBox "DiagnoseFirstPromoterSelectedRow failed:" & vbCrLf & _
            "Error " & Err.Number & ": " & Err.Description, vbCritical
 End Sub
+
+Private Function ShouldSendPayoutStatus(ByVal payoutStatus As String) As Boolean
+    Select Case UCase$(Trim$(payoutStatus))
+        Case "TO BE PAID"
+            ShouldSendPayoutStatus = True
+        Case "ALREADY PAID"
+            ShouldSendPayoutStatus = FP_SEND_ALREADY_PAID
+        Case Else
+            ShouldSendPayoutStatus = False
+    End Select
+End Function
 
 Private Function FirstPromoterResultLabel(ByVal fpStatus As Long) As String
     Select Case fpStatus
@@ -1041,6 +1084,13 @@ Private Function TryParseNumber(ByVal value As Variant, ByRef parsedNumber As Do
     Exit Function
 
 ParseFail:
+End Function
+
+Private Function DateRangesOverlap(ByVal firstFrom As Date, _
+                                   ByVal firstTo As Date, _
+                                   ByVal secondFrom As Date, _
+                                   ByVal secondTo As Date) As Boolean
+    DateRangesOverlap = (DateValue(firstFrom) <= DateValue(secondTo) And DateValue(secondFrom) <= DateValue(firstTo))
 End Function
 
 Private Function HasDateRange(ByVal fromValue As Variant, ByVal toValue As Variant, ByRef fromDate As Date, ByRef toDate As Date) As Boolean

@@ -80,6 +80,18 @@ In quel caso controlla:
 - Le scritture su log e colonna stato sono non bloccanti, cosi una cella protetta/formattata non interrompe l'invio gia effettuato.
 
 
+
+### Regola di sicurezza Paid / Unpaid
+
+`GenerateOutput` assegna lo stato in colonna J:
+
+- `Already Paid`: riga storica gia pagata, verde;
+- `To Be Paid`: riga ancora da pagare, gialla.
+
+Per evitare payout duplicati, `SendToFirstPromoter` invia **solo** le righe con stato `To Be Paid`. Le righe `Already Paid` vengono saltate, marcate `Skipped Paid` in colonna K e loggate in `FP_Import_Log`; non viene creata nessuna nuova commissione pagabile.
+
+Inoltre i due intervalli data `Already Paid` e `To Be Paid` non possono sovrapporsi: se si intersecano, `GenerateOutput` si ferma con errore. Solo impostando esplicitamente `FP_SEND_ALREADY_PAID = True` nel codice si abilita l'invio delle righe gia pagate, ma e sconsigliato per import storici gia liquidati.
+
 ### Date storiche e `uid`
 
 Per API v2 il modulo ora usa un flusso protetto:
