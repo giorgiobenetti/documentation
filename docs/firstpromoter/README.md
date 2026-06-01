@@ -25,7 +25,7 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 - Parser CSV BCE basato sulle intestazioni `TIME_PERIOD` e `OBS_VALUE`, con supporto per campi quotati.
 - Conversione EUR/USD coerente con il tasso BCE `USD per 1 EUR`: importi USD convertiti in EUR con `amount / rate`; importi EUR lasciati invariati.
 - Filtri indipendenti per `Already Paid` e `To Be Paid`, con righe verdi per pagati e gialle per da pagare.
-- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe e colonna Coupon inviata sia come `promo_code` sia come `ref_id` per attribuire la vendita al promoter. Se disponibile, lo Stripe Customer ID viene inviato come `uid`. In API v2 il modulo crea prima il lead via `/track/signup`, forza `customer_since` storico via `/api/v1/leads/update`, e registra la sale solo se questo backdate riesce.
+- Invio FirstPromoter tramite WinHTTP con importo in centesimi, `event_id` uguale all'id pagamento Stripe e colonna Coupon inviata sia come `promo_code` sia come `ref_id` per attribuire la vendita al promoter. Se disponibile, lo Stripe Customer ID viene inviato come `uid`. In API v2 il modulo crea prima il lead via `/track/signup`, forza `customer_since` storico via `/api/v1/leads/update`, e registra la sale solo se questo backdate riesce.
 
 ## Troubleshooting invio FirstPromoter
 
@@ -35,6 +35,8 @@ La documentazione FirstPromoter e divisa in due flussi:
 
 - v1: `POST https://firstpromoter.com/api/v1/track/sale`, parametri in query string, header `X-API-KEY`, risposta `204` quando non viene trovata una referral sale.
 - v2: `POST https://api.firstpromoter.com/api/v2/track/sale`, JSON body, header `Authorization: Bearer <API key>` e `Account-ID`, risposta `404` quando referral/promoter non vengono trovati.
+
+Le chiamate FirstPromoter usano `WinHttp.WinHttpRequest.5.1` per evitare errori VBA/MSXML nella sequenza Open/header/Send.
 
 Se stai usando la UI FirstPromoter v2 e la sezione Tracking Coupons, imposta `FP_ACCOUNT_ID` con l'Account ID indicato in Settings > Integrations e usa la `API key` normale in `FP_API_KEY`. Imposta inoltre `FP_LEGACY_API_KEY` con la Legacy API key: serve solo per chiamare `PUT /api/v1/leads/update` e backdatare `customer_since`. Questo forza il modulo a usare la API v2 in modo sicuro.
 

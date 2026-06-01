@@ -845,53 +845,19 @@ Private Sub FindFirstPromoterCommissionID(ByVal eventID As String, _
                                           ByRef fpStatus As Long, _
                                           ByRef fpResponse As String, _
                                           ByRef commissionID As String)
-    On Error GoTo RequestFailed
-
-    Dim http As Object
-    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-    http.setTimeouts 5000, 10000, 30000, 30000
-    http.Open "GET", FP_COMMISSIONS_URL_V2 & "?q=" & UrlEncode(eventID), False
-    http.setRequestHeader "Accept", "application/json"
-    http.setRequestHeader "Authorization", "Bearer " & apiKey
-    http.setRequestHeader "Account-ID", Trim$(FP_ACCOUNT_ID)
-    http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
-    http.Send vbNullString
-
-    fpStatus = CLng(http.Status)
-    fpResponse = Left$(CStr(http.responseText), 1000)
+    Call FirstPromoterV2Request("GET", FP_COMMISSIONS_URL_V2 & "?q=" & UrlEncode(eventID), vbNullString, apiKey, fpStatus, fpResponse)
     If fpStatus = 200 Then commissionID = ExtractFirstJsonNumberByKey(fpResponse, "id")
-    Exit Sub
-
-RequestFailed:
-    fpStatus = 0
-    fpResponse = "VBA HTTP error while finding commission " & Err.Number & ": " & Err.Description
 End Sub
 
 Private Sub MarkFirstPromoterCommissionPaid(ByVal commissionID As String, _
                                             ByVal apiKey As String, _
                                             ByRef fpStatus As Long, _
                                             ByRef fpResponse As String)
-    On Error GoTo RequestFailed
-
-    Dim http As Object
-    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-    http.setTimeouts 5000, 10000, 30000, 30000
-    http.Open "PUT", FP_COMMISSIONS_URL_V2 & "/" & commissionID, False
-    http.setRequestHeader "Content-Type", "application/json"
-    http.setRequestHeader "Accept", "application/json"
-    http.setRequestHeader "Authorization", "Bearer " & apiKey
-    http.setRequestHeader "Account-ID", Trim$(FP_ACCOUNT_ID)
-    http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
-    http.Send "{" & JsonString("is_paid") & ":true," & _
+    Dim jsonPayload As String
+    jsonPayload = "{" & JsonString("is_paid") & ":true," & _
         JsonString("internal_note") & ":" & JsonString("Historical import - already paid before FirstPromoter migration") & "}"
 
-    fpStatus = CLng(http.Status)
-    fpResponse = Left$(CStr(http.responseText), 500)
-    Exit Sub
-
-RequestFailed:
-    fpStatus = 0
-    fpResponse = "VBA HTTP error while marking commission paid " & Err.Number & ": " & Err.Description
+    Call FirstPromoterV2Request("PUT", FP_COMMISSIONS_URL_V2 & "/" & commissionID, jsonPayload, apiKey, fpStatus, fpResponse)
 End Sub
 
 Private Function ExtractFirstJsonNumberByKey(ByVal jsonText As String, ByVal keyName As String) As String
@@ -943,14 +909,6 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
                                   ByVal customerUID As String, _
                                   ByRef fpStatus As Long, _
                                   ByRef fpResponse As String)
-    On Error GoTo RequestFailed
-
-    Dim http As Object
-    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-
-    ' Resolve/connect/send/receive timeouts in milliseconds.
-    http.setTimeouts 5000, 10000, 30000, 30000
-
     If IsFirstPromoterV2() Then
         If Trim$(FP_LEGACY_API_KEY) = vbNullString Then
             fpStatus = 0
@@ -963,7 +921,7 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
         Dim signupPayload As String
         signupPayload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, customerUID)
 
-        Call PostFirstPromoterJson(FP_SIGNUP_URL_V2, signupPayload, apiKey, signupStatus, signupResponse)
+        Call FirstPromoterV2Request("POST", FP_SIGNUP_URL_V2, signupPayload, apiKey, signupStatus, signupResponse)
         If signupStatus <> 200 And signupStatus <> 422 Then
             fpStatus = signupStatus
             fpResponse = "Signup failed; sale not sent: " & signupResponse & " | Signup payload: " & signupPayload
@@ -980,25 +938,13 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
             Exit Sub
         End If
 
-        Call PostFirstPromoterJson(FP_TRACK_URL_V2, requestPayload, apiKey, fpStatus, fpResponse)
+        Call FirstPromoterV2Request("POST", FP_TRACK_URL_V2, requestPayload, apiKey, fpStatus, fpResponse)
         fpResponse = "Signup HTTP " & CStr(signupStatus) & ": " & Left$(signupResponse, 120) & _
             " | customer_since HTTP " & CStr(customerSinceStatus) & ": " & Left$(customerSinceResponse, 120) & _
             " | Sale: " & fpResponse
     Else
-        http.Open "POST", FP_TRACK_URL_V1 & "?" & requestPayload, False
-        http.setRequestHeader "Accept", "application/json"
-        http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
-        http.setRequestHeader "X-API-KEY", apiKey
-        http.Send vbNullString
+        Call FirstPromoterLegacyRequest("POST", FP_TRACK_URL_V1 & "?" & requestPayload, Trim$(FP_API_KEY), fpStatus, fpResponse)
     End If
-
-    fpStatus = CLng(http.Status)
-    fpResponse = Left$(CStr(http.responseText), 500)
-    Exit Sub
-
-RequestFailed:
-    fpStatus = 0
-    fpResponse = "VBA HTTP error " & Err.Number & ": " & Err.Description
 End Sub
 
 Private Sub UpdateFirstPromoterCustomerSince(ByVal customerSinceDate As Date, _
@@ -1007,8 +953,6 @@ Private Sub UpdateFirstPromoterCustomerSince(ByVal customerSinceDate As Date, _
                                              ByVal customerUID As String, _
                                              ByRef fpStatus As Long, _
                                              ByRef fpResponse As String)
-    On Error GoTo RequestFailed
-
     Dim legacyApiKey As String
     legacyApiKey = GetFirstPromoterLegacyApiKey()
 
@@ -1023,22 +967,7 @@ Private Sub UpdateFirstPromoterCustomerSince(ByVal customerSinceDate As Date, _
         "&state=active" & _
         "&customer_since=" & UrlEncode(Format$(customerSinceDate, "yyyy-mm-dd\Thh:nn:ss\Z"))
 
-    Dim http As Object
-    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-    http.setTimeouts 5000, 10000, 30000, 30000
-    http.Open "PUT", FP_LEAD_UPDATE_URL_V1 & "?" & queryString, False
-    http.setRequestHeader "Accept", "application/json"
-    http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
-    http.setRequestHeader "X-API-KEY", legacyApiKey
-    http.Send vbNullString
-
-    fpStatus = CLng(http.Status)
-    fpResponse = Left$(CStr(http.responseText), 500)
-    Exit Sub
-
-RequestFailed:
-    fpStatus = 0
-    fpResponse = "VBA HTTP error while updating customer_since " & Err.Number & ": " & Err.Description
+    Call FirstPromoterLegacyRequest("PUT", FP_LEAD_UPDATE_URL_V1 & "?" & queryString, legacyApiKey, fpStatus, fpResponse)
 End Sub
 
 Private Sub PostFirstPromoterJson(ByVal url As String, _
@@ -1046,27 +975,60 @@ Private Sub PostFirstPromoterJson(ByVal url As String, _
                                   ByVal apiKey As String, _
                                   ByRef fpStatus As Long, _
                                   ByRef fpResponse As String)
+    Call FirstPromoterV2Request("POST", url, jsonPayload, apiKey, fpStatus, fpResponse)
+End Sub
+
+Private Sub FirstPromoterV2Request(ByVal method As String, _
+                                   ByVal url As String, _
+                                   ByVal jsonPayload As String, _
+                                   ByVal apiKey As String, _
+                                   ByRef fpStatus As Long, _
+                                   ByRef fpResponse As String)
     On Error GoTo RequestFailed
 
     Dim http As Object
-    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-
-    http.setTimeouts 5000, 10000, 30000, 30000
-    http.Open "POST", url, False
-    http.setRequestHeader "Content-Type", "application/json"
-    http.setRequestHeader "Accept", "application/json"
-    http.setRequestHeader "Authorization", "Bearer " & apiKey
-    http.setRequestHeader "Account-ID", Trim$(FP_ACCOUNT_ID)
-    http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
+    Set http = CreateObject("WinHttp.WinHttpRequest.5.1")
+    http.SetTimeouts 5000, 10000, 30000, 30000
+    http.Open method, url, False
+    http.SetRequestHeader "Accept", "application/json"
+    If jsonPayload <> vbNullString Then http.SetRequestHeader "Content-Type", "application/json"
+    http.SetRequestHeader "Authorization", "Bearer " & apiKey
+    http.SetRequestHeader "Account-ID", Trim$(FP_ACCOUNT_ID)
+    http.SetRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
     http.Send jsonPayload
 
     fpStatus = CLng(http.Status)
-    fpResponse = Left$(CStr(http.responseText), 500)
+    fpResponse = Left$(CStr(http.ResponseText), 1000)
     Exit Sub
 
 RequestFailed:
     fpStatus = 0
-    fpResponse = "VBA HTTP error " & Err.Number & ": " & Err.Description
+    fpResponse = "WinHTTP " & method & " error " & Err.Number & ": " & Err.Description & " | URL: " & url
+End Sub
+
+Private Sub FirstPromoterLegacyRequest(ByVal method As String, _
+                                       ByVal url As String, _
+                                       ByVal legacyApiKey As String, _
+                                       ByRef fpStatus As Long, _
+                                       ByRef fpResponse As String)
+    On Error GoTo RequestFailed
+
+    Dim http As Object
+    Set http = CreateObject("WinHttp.WinHttpRequest.5.1")
+    http.SetTimeouts 5000, 10000, 30000, 30000
+    http.Open method, url, False
+    http.SetRequestHeader "Accept", "application/json"
+    http.SetRequestHeader "X-API-KEY", legacyApiKey
+    http.SetRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
+    http.Send vbNullString
+
+    fpStatus = CLng(http.Status)
+    fpResponse = Left$(CStr(http.ResponseText), 1000)
+    Exit Sub
+
+RequestFailed:
+    fpStatus = 0
+    fpResponse = "WinHTTP legacy " & method & " error " & Err.Number & ": " & Err.Description & " | URL: " & url
 End Sub
 
 Private Function GetToolWorkbook() As Workbook
