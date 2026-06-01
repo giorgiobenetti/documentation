@@ -10,12 +10,11 @@ Private Declare Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 #End If
 
 ' API key selection:
-' - v2: use the regular API key in FP_API_KEY, set FP_ACCOUNT_ID, and set FP_LEGACY_API_KEY for customer_since backdating.
-' - v1 legacy: use the Legacy API key in FP_API_KEY and leave FP_ACCOUNT_ID empty.
-Private Const FP_API_KEY As String = ""
-Private Const FP_LEGACY_API_KEY As String = ""
-' FirstPromoter v2 requires Account-ID. Leave empty to use legacy v1.
-Private Const FP_ACCOUNT_ID As String = ""
+' API credentials are read from workbook-level named ranges first:
+' FP_API_KEY, FP_LEGACY_API_KEY, FP_ACCOUNT_ID. Constants below are optional fallbacks.
+Private Const FP_API_KEY_FALLBACK As String = ""
+Private Const FP_LEGACY_API_KEY_FALLBACK As String = ""
+Private Const FP_ACCOUNT_ID_FALLBACK As String = ""
 ' Already Paid rows are imported, then immediately marked paid. If mark-paid fails, import stops.
 Private Const FP_IMPORT_ALREADY_PAID As Boolean = True
 Private Const FP_TRACK_URL_V1 As String = "https://firstpromoter.com/api/v1/track/sale"
@@ -910,7 +909,7 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
                                   ByRef fpStatus As Long, _
                                   ByRef fpResponse As String)
     If IsFirstPromoterV2() Then
-        If Trim$(FP_LEGACY_API_KEY) = vbNullString Then
+        If GetConfigValue("FP_LEGACY_API_KEY", FP_LEGACY_API_KEY_FALLBACK) = vbNullString Then
             fpStatus = 0
             fpResponse = "Missing FP_LEGACY_API_KEY. No signup or sale was sent because customer_since cannot be backdated safely."
             Exit Sub
@@ -943,7 +942,7 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
             " | customer_since HTTP " & CStr(customerSinceStatus) & ": " & Left$(customerSinceResponse, 120) & _
             " | Sale: " & fpResponse
     Else
-        Call FirstPromoterLegacyRequest("POST", FP_TRACK_URL_V1 & "?" & requestPayload, Trim$(FP_API_KEY), fpStatus, fpResponse)
+        Call FirstPromoterLegacyRequest("POST", FP_TRACK_URL_V1 & "?" & requestPayload, GetFirstPromoterApiKey(), fpStatus, fpResponse)
     End If
 End Sub
 
@@ -993,7 +992,7 @@ Private Sub FirstPromoterV2Request(ByVal method As String, _
     http.SetRequestHeader "Accept", "application/json"
     If jsonPayload <> vbNullString Then http.SetRequestHeader "Content-Type", "application/json"
     http.SetRequestHeader "Authorization", "Bearer " & apiKey
-    http.SetRequestHeader "Account-ID", Trim$(FP_ACCOUNT_ID)
+    http.SetRequestHeader "Account-ID", GetFirstPromoterAccountID()
     http.SetRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
     http.Send jsonPayload
 
@@ -1486,7 +1485,7 @@ Private Function OptionalJsonStringProperty(ByVal propertyName As String, ByVal 
 End Function
 
 Private Function IsFirstPromoterV2() As Boolean
-    IsFirstPromoterV2 = (Trim$(FP_ACCOUNT_ID) <> vbNullString)
+    IsFirstPromoterV2 = (GetFirstPromoterAccountID() <> vbNullString)
 End Function
 
 Private Function FirstPromoterApiMode() As String
@@ -1568,21 +1567,45 @@ Private Function UrlEncode(ByVal value As String) As String
 End Function
 
 Private Function GetFirstPromoterApiKey() As String
-    If Trim$(FP_API_KEY) = vbNullString Then
+    Dim apiKey As String
+    apiKey = GetConfigValue("FP_API_KEY", FP_API_KEY_FALLBACK)
+
+    If apiKey = vbNullString Then
         Err.Raise vbObjectError + 1501, "GetFirstPromoterApiKey", _
-            "FirstPromoter API key is missing. Set the FP_API_KEY constant in this module."
+            "FirstPromoter API key is missing. Create workbook named range FP_API_KEY or set FP_API_KEY_FALLBACK in this module."
     End If
 
-    GetFirstPromoterApiKey = Trim$(FP_API_KEY)
+    GetFirstPromoterApiKey = apiKey
 End Function
 
 Private Function GetFirstPromoterLegacyApiKey() As String
-    If Trim$(FP_LEGACY_API_KEY) = vbNullString Then
+    Dim legacyApiKey As String
+    legacyApiKey = GetConfigValue("FP_LEGACY_API_KEY", FP_LEGACY_API_KEY_FALLBACK)
+
+    If legacyApiKey = vbNullString Then
         Err.Raise vbObjectError + 1502, "GetFirstPromoterLegacyApiKey", _
-            "FirstPromoter Legacy API key is missing. Set FP_LEGACY_API_KEY before using API v2 imports, so customer_since can be backdated before any sale is sent."
+            "FirstPromoter Legacy API key is missing. Create workbook named range FP_LEGACY_API_KEY before using API v2 imports, so customer_since can be backdated before any sale is sent."
     End If
 
-    GetFirstPromoterLegacyApiKey = Trim$(FP_LEGACY_API_KEY)
+    GetFirstPromoterLegacyApiKey = legacyApiKey
+End Function
+
+Private Function GetFirstPromoterAccountID() As String
+    GetFirstPromoterAccountID = GetConfigValue("FP_ACCOUNT_ID", FP_ACCOUNT_ID_FALLBACK)
+End Function
+
+Private Function GetConfigValue(ByVal configName As String, ByVal fallbackValue As String) As String
+    On Error GoTo MissingName
+
+    Dim wb As Workbook
+    Set wb = GetToolWorkbook()
+
+    GetConfigValue = Trim$(CStr(wb.Names(configName).RefersToRange.Value))
+    If GetConfigValue = vbNullString Then GetConfigValue = Trim$(fallbackValue)
+    Exit Function
+
+MissingName:
+    GetConfigValue = Trim$(fallbackValue)
 End Function
 
 Private Sub SleepMs(ByVal milliseconds As Long)

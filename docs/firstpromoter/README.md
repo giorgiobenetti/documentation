@@ -14,10 +14,9 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 2. Premi `ALT+F11` per aprire l'editor VBA.
 3. Rimuovi o rinomina il vecchio modulo `FP_Import_Tool`.
 4. Usa `File > Import File...` e importa `FP_Import_Tool.bas`. In alternativa, puoi copiare/incollare il contenuto in un modulo standard; in questo caso il file fornito non contiene righe `Attribute`, che in VBE causano errore di sintassi se incollate manualmente.
-5. Imposta la costante `FP_API_KEY` nel modulo usando la chiave corretta per la modalita API scelta.
-   - API v2: usa la `API key` normale, imposta `FP_ACCOUNT_ID` e imposta anche `FP_LEGACY_API_KEY` per poter correggere `customer_since` prima di creare la sale.
-   - API v1 legacy: usa la `Legacy API key` in `FP_API_KEY` e lascia `FP_ACCOUNT_ID` vuoto.
-6. Se il tuo account e FirstPromoter v2, imposta `FP_ACCOUNT_ID`; se resta vuota, il modulo usa la API legacy v1.
+5. Crea le Named Range workbook-level `FP_API_KEY`, `FP_LEGACY_API_KEY` e `FP_ACCOUNT_ID` nel file Excel. Il modulo legge prima queste Named Range; le costanti nel codice sono solo fallback vuoti.
+   - API v2: `FP_API_KEY` = API key normale, `FP_ACCOUNT_ID` = Account ID, `FP_LEGACY_API_KEY` = Legacy API key per correggere `customer_since`.
+   - API v1 legacy: `FP_API_KEY` = Legacy API key e `FP_ACCOUNT_ID` vuoto.
 
 ## Correzioni incluse
 
@@ -38,7 +37,7 @@ La documentazione FirstPromoter e divisa in due flussi:
 
 Le chiamate FirstPromoter usano `WinHttp.WinHttpRequest.5.1` per evitare errori VBA/MSXML nella sequenza Open/header/Send.
 
-Se stai usando la UI FirstPromoter v2 e la sezione Tracking Coupons, imposta `FP_ACCOUNT_ID` con l'Account ID indicato in Settings > Integrations e usa la `API key` normale in `FP_API_KEY`. Imposta inoltre `FP_LEGACY_API_KEY` con la Legacy API key: serve solo per chiamare `PUT /api/v1/leads/update` e backdatare `customer_since`. Questo forza il modulo a usare la API v2 in modo sicuro.
+Se stai usando la UI FirstPromoter v2 e la sezione Tracking Coupons, crea le Named Range `FP_ACCOUNT_ID`, `FP_API_KEY` e `FP_LEGACY_API_KEY`: `FP_API_KEY` deve contenere la API key normale, `FP_LEGACY_API_KEY` la Legacy API key. La legacy serve solo per chiamare `PUT /api/v1/leads/update` e backdatare `customer_since`.
 
 ### Verifica locale senza inviare
 
