@@ -968,15 +968,11 @@ Private Sub FirstPromoterV2Request(ByVal method As String, _
     http.SetTimeouts 5000, 10000, 30000, 30000
     http.Open method, url, False
     http.SetRequestHeader "Accept", "application/json"
-    If hasJsonBody Then http.SetRequestHeader "Content-Type", "application/json; charset=utf-8"
-    http.SetRequestHeader "Authorization", "Bearer " & apiKey
-    http.SetRequestHeader "Account-ID", GetFirstPromoterAccountID()
+    If hasJsonBody Then http.SetRequestHeader "Content-Type", "application/json"
+    http.SetRequestHeader "Authorization", "Bearer " & NormalizeBearerToken(apiKey)
+    http.SetRequestHeader "Account-ID", NormalizeAccountID(GetFirstPromoterAccountID())
     http.SetRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
-    If hasJsonBody Then
-        http.Send StrConv(jsonPayload, vbFromUnicode)
-    Else
-        http.Send vbNullString
-    End If
+    http.Send IIf(hasJsonBody, jsonPayload, vbNullString)
 
     fpStatus = CLng(http.Status)
     fpResponse = Left$(CStr(http.ResponseText), 1000)
@@ -999,7 +995,7 @@ Private Sub FirstPromoterLegacyRequest(ByVal method As String, _
     http.SetTimeouts 5000, 10000, 30000, 30000
     http.Open method, url, False
     http.SetRequestHeader "Accept", "application/json"
-    http.SetRequestHeader "X-API-KEY", legacyApiKey
+    http.SetRequestHeader "X-API-KEY", NormalizeBearerToken(legacyApiKey)
     http.SetRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
     http.Send vbNullString
 
@@ -1582,12 +1578,36 @@ Private Function GetConfigValue(ByVal configName As String, ByVal fallbackValue 
     Dim wb As Workbook
     Set wb = GetToolWorkbook()
 
-    GetConfigValue = Trim$(CStr(wb.Names(configName).RefersToRange.Value))
-    If GetConfigValue = vbNullString Then GetConfigValue = Trim$(fallbackValue)
+    GetConfigValue = CleanConfigValue(CStr(wb.Names(configName).RefersToRange.Value))
+    If GetConfigValue = vbNullString Then GetConfigValue = CleanConfigValue(fallbackValue)
     Exit Function
 
 MissingName:
-    GetConfigValue = Trim$(fallbackValue)
+    GetConfigValue = CleanConfigValue(fallbackValue)
+End Function
+
+Private Function CleanConfigValue(ByVal value As String) As String
+    value = Replace$(value, vbCr, vbNullString)
+    value = Replace$(value, vbLf, vbNullString)
+    value = Replace$(value, vbTab, vbNullString)
+    value = Replace$(value, ChrW$(160), vbNullString)
+    CleanConfigValue = Trim$(value)
+End Function
+
+Private Function NormalizeBearerToken(ByVal value As String) As String
+    value = CleanConfigValue(value)
+    If LCase$(Left$(value, 7)) = "bearer " Then value = Mid$(value, 8)
+    NormalizeBearerToken = Trim$(value)
+End Function
+
+Private Function NormalizeAccountID(ByVal value As String) As String
+    value = CleanConfigValue(value)
+    If InStr(1, value, ":", vbTextCompare) > 0 Then
+        If LCase$(Left$(value, InStr(1, value, ":", vbTextCompare) - 1)) = "account-id" Then
+            value = Mid$(value, InStr(1, value, ":", vbTextCompare) + 1)
+        End If
+    End If
+    NormalizeAccountID = Trim$(value)
 End Function
 
 Private Sub SleepMs(ByVal milliseconds As Long)
