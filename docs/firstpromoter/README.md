@@ -14,9 +14,10 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 2. Premi `ALT+F11` per aprire l'editor VBA.
 3. Rimuovi o rinomina il vecchio modulo `FP_Import_Tool`.
 4. Usa `File > Import File...` e importa `FP_Import_Tool.bas`. In alternativa, puoi copiare/incollare il contenuto in un modulo standard; in questo caso il file fornito non contiene righe `Attribute`, che in VBE causano errore di sintassi se incollate manualmente.
-5. Crea le Named Range workbook-level `FP_API_KEY`, `FP_LEGACY_API_KEY` e `FP_ACCOUNT_ID` nel file Excel. Il modulo legge prima queste Named Range; le costanti nel codice sono solo fallback vuoti.
-   - API v2: `FP_API_KEY` = API key normale, `FP_ACCOUNT_ID` = Account ID, `FP_LEGACY_API_KEY` = Legacy API key per correggere `customer_since`.
-   - API v1 legacy: `FP_API_KEY` = Legacy API key e `FP_ACCOUNT_ID` vuoto.
+5. Crea le Named Range workbook-level `FP_API_KEY` e `FP_ACCOUNT_ID` nel file Excel. Il modulo legge prima queste Named Range; le costanti nel codice sono solo fallback vuoti.
+   - `FP_API_KEY` = API key normale FirstPromoter v2.
+   - `FP_ACCOUNT_ID` = Account ID FirstPromoter.
+   - `FP_LEGACY_API_KEY` non serve per il nuovo flusso referral-only.
 
 ## Correzioni incluse
 
@@ -24,20 +25,37 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 - Parser CSV BCE basato sulle intestazioni `TIME_PERIOD` e `OBS_VALUE`, con supporto per campi quotati.
 - Conversione EUR/USD coerente con il tasso BCE `USD per 1 EUR`: importi USD convertiti in EUR con `amount / rate`; importi EUR lasciati invariati.
 - Filtri indipendenti per `Already Paid` e `To Be Paid`, con righe verdi per pagati e gialle per da pagare.
-- Invio FirstPromoter tramite WinHTTP con importo in centesimi, `event_id` uguale all'id pagamento Stripe e colonna Coupon inviata sia come `promo_code` sia come `ref_id` per attribuire la vendita al promoter. Se disponibile, lo Stripe Customer ID viene inviato come `uid`. In API v2 il modulo crea prima il lead via `/track/signup`, forza `customer_since` storico via `/api/v1/leads/update`, e registra la sale solo se questo backdate riesce.
+- Invio FirstPromoter referral-only tramite WinHTTP: usa `/api/v2/track/signup` con email cliente, `uid` = Stripe Customer ID, `ref_id` = Coupon. Non crea sale, commissioni o payout storici.
 
 ## Troubleshooting invio FirstPromoter
 
-### Scelta API v1/v2
+### Flusso referral-only
 
-La documentazione FirstPromoter e divisa in due flussi:
+Il modulo ora usa solo FirstPromoter API v2 per importare referral/lead storici:
 
-- v1: `POST https://firstpromoter.com/api/v1/track/sale`, parametri in query string, header `X-API-KEY`, risposta `204` quando non viene trovata una referral sale.
-- v2: `POST https://api.firstpromoter.com/api/v2/track/sale`, JSON body, header `Authorization: Bearer <API key>` e `Account-ID`, risposta `404` quando referral/promoter non vengono trovati.
+`POST https://api.firstpromoter.com/api/v2/track/signup`
+
+Header richiesti:
+
+- `Authorization: Bearer <FP_API_KEY>`
+- `Account-ID: <FP_ACCOUNT_ID>`
+- `Content-Type: application/json`
+
+Payload inviato per ogni riga:
+
+```json
+{
+  "email": "cliente@example.com",
+  "uid": "cus_...",
+  "ref_id": "GO20",
+  "created_at": "2026-05-10T00:00:00Z",
+  "skip_email_notification": true
+}
+```
+
+Questo crea/aggiorna il referral associato al promoter, ma non crea vendite, commissioni o payout. I rinnovi futuri dovranno essere tracciati da FirstPromoter usando lo stesso `uid` Stripe customer id.
 
 Le chiamate FirstPromoter usano `WinHttp.WinHttpRequest.5.1` per evitare errori VBA/MSXML nella sequenza Open/header/Send.
-
-Se stai usando la UI FirstPromoter v2 e la sezione Tracking Coupons, crea le Named Range `FP_ACCOUNT_ID`, `FP_API_KEY` e `FP_LEGACY_API_KEY`: `FP_API_KEY` deve contenere la API key normale, `FP_LEGACY_API_KEY` la Legacy API key. La legacy serve solo per chiamare `PUT /api/v1/leads/update` e backdatare `customer_since`.
 
 ### Verifica locale senza inviare
 
@@ -45,10 +63,11 @@ Usa `DiagnoseFirstPromoterSelectedRow` selezionando una riga in `Filter_Output`:
 
 Se alcune righe risultano inviate ma non compaiono in FirstPromoter, controlla `FP_Import_Log`:
 
-- `200` = vendita tracciata e commissione generata;
+- `200` = referral importato;
 - `2024` non e uno status HTTP FirstPromoter valido: se lo vedi come errore VBA/Excel, controlla in quale colonna viene scritto e usa `DiagnoseFirstPromoterSelectedRow`;
-- `204` = v1: nessun lead/referral trovato, oppure `promo_code` non associato a un Tracking Coupon unico/attivo del promoter;
-- `404` = v2: referral/promoter non trovato oppure promoter bannato;
+- `422` = referral gia esistente;
+- `401`/`403` = problema API key o Account ID;
+- `404` = `ref_id` non trovato/non valido;
 - `409` = `event_id` duplicato, la vendita era gia stata inviata;
 - `0` = errore HTTP/VBA prima di ricevere una risposta API.
 
@@ -82,33 +101,26 @@ In quel caso controlla:
 
 
 
-### Regola di sicurezza Paid / Unpaid
+### Paid / Unpaid nel nuovo flusso
 
-`GenerateOutput` assegna lo stato in colonna J:
+`GenerateOutput` continua ad assegnare lo stato in colonna J:
 
-- `Already Paid`: riga storica gia pagata, verde;
-- `To Be Paid`: riga ancora da pagare, gialla.
+- `Already Paid`: riga storica gia saldata fuori da FirstPromoter, verde;
+- `To Be Paid`: riga non ancora saldata nello storico, gialla.
 
-`SendToFirstPromoter` importa entrambe le categorie, ma con due trattamenti diversi:
+Nel nuovo flusso referral-only questa distinzione non crea payout: entrambe le categorie vengono importate solo come referral/lead, senza sale e senza commissioni. La distinzione resta utile per controllo operativo e riconciliazione esterna.
 
-- `To Be Paid`: crea una sale/commissione normale, quindi resta pagabile in FirstPromoter.
-- `Already Paid`: crea o ritrova la sale/commissione, poi tenta subito di marcarla `is_paid=true` tramite API commissioni v2. Se il mark-paid fallisce, l'import si ferma per evitare di lasciare commissioni storiche pagabili.
-
-Inoltre i due intervalli data `Already Paid` e `To Be Paid` non possono sovrapporsi: se si intersecano, `GenerateOutput` si ferma con errore.
-
-Per importare correttamente gli `Already Paid` serve la modalita v2 (`FP_API_KEY` + `FP_ACCOUNT_ID`) per recuperare/aggiornare la commissione. Il log deve mostrare `Paid Imported` in colonna K e una risposta di mark-paid riuscita.
+Gli intervalli data `Already Paid` e `To Be Paid` non possono sovrapporsi: se si intersecano, `GenerateOutput` si ferma con errore.
 
 ### Date storiche e `uid`
 
-Per API v2 il modulo ora usa un flusso protetto:
+Per ogni referral importato il modulo invia:
 
-1. invia una signup storica con `created_at`, `uid` e `ref_id`;
-2. chiama `PUT https://firstpromoter.com/api/v1/leads/update` con la `FP_LEGACY_API_KEY` per impostare `customer_since` alla data storica;
-3. invia la sale solo se il backdate di `customer_since` ha successo.
+- `created_at` = data storica del pagamento/riga;
+- `uid` = Stripe Customer ID (`cus_...`) dalla colonna L di `Filter_Output`;
+- `ref_id` = coupon/promoter code dalla colonna D.
 
-Questo evita di creare commissioni pagabili quando FirstPromoter terrebbe `Customer Since` alla data odierna. Se `FP_LEGACY_API_KEY` manca, il modulo si ferma prima di creare signup/lead; se l'update `customer_since` fallisce, la sale non viene inviata e la riga va in errore nel log.
-
-Se un lead/customer e gia stato creato da un test precedente con `Customer Since` odierno, esegui il nuovo flusso su una riga di test e verifica nel log che l'update `customer_since` risponda `200`. Se FirstPromoter non aggiorna quel record, va corretto/eliminato lato FirstPromoter prima di reimportare.
+Questo consente a FirstPromoter di associare il cliente storico al promoter senza creare commissioni passate. I rinnovi futuri dovranno arrivare a FirstPromoter con lo stesso `uid`.
 
 ## Layout atteso
 
@@ -133,4 +145,4 @@ Il modulo cerca le intestazioni nelle prime 10 righe. Se non le trova, usa il la
 - `B4`: lista coupon separati da virgola, punto e virgola o nuova riga.
 - `B5:D5`: intervallo `Already Paid`.
 - `B6:D6`: intervallo `To Be Paid`.
-- Output dalla riga 11, colonne `A:L`; la colonna `K` viene usata come stato importazione (`No`, `Yes`, `Paid Imported`, `Paid Mark Error`, `Error`, `No Referral`, `Duplicate`); la colonna `L` contiene lo Stripe Customer ID / `uid` quando disponibile.
+- Output dalla riga 11, colonne `A:L`; la colonna `K` viene usata come stato importazione (`No`, `Referral Imported`, `Referral Exists`, `Referral Error`); la colonna `L` contiene lo Stripe Customer ID / `uid` quando disponibile.

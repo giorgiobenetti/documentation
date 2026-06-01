@@ -367,9 +367,14 @@ Public Sub SendToFirstPromoter()
     Set wsO = GetToolWorksheet(SHEET_FILTER_OUTPUT)
     Set wsLog = GetWritableFirstPromoterLogWorksheet(GetToolWorksheet(SHEET_FP_IMPORT_LOG))
 
+    If Not IsFirstPromoterV2() Then
+        MsgBox "Referral-only import requires FirstPromoter API v2." & vbCrLf & _
+               "Create workbook named ranges FP_API_KEY and FP_ACCOUNT_ID first.", vbCritical
+        Exit Sub
+    End If
+
     Dim apiKey As String
     apiKey = GetFirstPromoterApiKey()
-    If IsFirstPromoterV2() Then Call GetFirstPromoterLegacyApiKey
 
     Dim lastRow As Long
     lastRow = wsO.Cells(wsO.Rows.Count, 1).End(xlUp).Row
@@ -379,10 +384,9 @@ Public Sub SendToFirstPromoter()
         Exit Sub
     End If
 
-    ' Headers are already validated by GetWritableFirstPromoterLogWorksheet.
-
     Dim confirm As VbMsgBoxResult
-    confirm = MsgBox("Send " & (lastRow - OUTPUT_FIRST_ROW + 1) & " transactions to FirstPromoter?" & vbCrLf & vbCrLf & _
+    confirm = MsgBox("Import referrals only for " & (lastRow - OUTPUT_FIRST_ROW + 1) & " output rows?" & vbCrLf & vbCrLf & _
+                     "No sales, commissions, or payouts will be created." & vbCrLf & _
                      "Every attempted row will be written to " & wsLog.Name & ".", vbYesNo + vbQuestion)
     If confirm = vbNo Then Exit Sub
 
@@ -390,16 +394,12 @@ Public Sub SendToFirstPromoter()
     logRow = NextFirstPromoterLogRow(wsLog)
 
     Dim i As Long
-    Dim successCount As Long
-    Dim paidImportedCount As Long
-    Dim noReferralCount As Long
-    Dim duplicateCount As Long
+    Dim importedCount As Long
+    Dim existingCount As Long
     Dim errorCount As Long
     Dim skippedCount As Long
-    successCount = 0
-    paidImportedCount = 0
-    noReferralCount = 0
-    duplicateCount = 0
+    importedCount = 0
+    existingCount = 0
     errorCount = 0
     skippedCount = 0
 
@@ -410,7 +410,6 @@ Public Sub SendToFirstPromoter()
         Dim custEmail As String
         Dim coupon As String
         Dim customerUID As String
-        Dim payoutStatus As String
         Dim amountEUR As Double
         Dim requestPayload As String
         Dim fpStatus As Long
@@ -422,7 +421,6 @@ Public Sub SendToFirstPromoter()
         custEmail = vbNullString
         coupon = vbNullString
         customerUID = vbNullString
-        payoutStatus = vbNullString
         amountEUR = 0
         requestPayload = vbNullString
         fpStatus = 0
@@ -439,14 +437,14 @@ Public Sub SendToFirstPromoter()
 
         Dim importState As String
         importState = UCase$(Trim$(CStr(wsO.Cells(i, 11).Value)))
-        If importState = "YES" Or importState = "PAID IMPORTED" Or Left$(importState, 7) = "SKIPPED" Then
+        If importState = "REFERRAL IMPORTED" Or importState = "REFERRAL EXISTS" Then
             skippedCount = skippedCount + 1
             GoTo RowComplete
         End If
 
-        stage = "Validate payment date"
+        stage = "Validate historical date"
         If Not TryParseDate(wsO.Cells(i, 2).Value, payDate) Then
-            Err.Raise vbObjectError + 1701, "SendToFirstPromoter", "Invalid payment date in Filter_Output column B."
+            Err.Raise vbObjectError + 1701, "SendToFirstPromoter", "Invalid historical date in Filter_Output column B."
         End If
 
         stage = "Validate customer email"
@@ -455,47 +453,26 @@ Public Sub SendToFirstPromoter()
             Err.Raise vbObjectError + 1702, "SendToFirstPromoter", "Missing or invalid customer email in Filter_Output column C."
         End If
 
-        stage = "Validate promo code"
+        stage = "Validate ref_id / coupon"
         coupon = Trim$(CStr(wsO.Cells(i, 4).Value))
-        customerUID = Trim$(CStr(wsO.Cells(i, 12).Value))
-        payoutStatus = Trim$(CStr(wsO.Cells(i, 10).Value))
         If coupon = vbNullString Then
-            Err.Raise vbObjectError + 1703, "SendToFirstPromoter", "Missing promo_code/ref_id in Filter_Output column D."
+            Err.Raise vbObjectError + 1703, "SendToFirstPromoter", "Missing ref_id / coupon in Filter_Output column D."
         End If
 
-        stage = "Validate EUR amount"
-        If Not TryParseNumber(wsO.Cells(i, 8).Value, amountEUR) Then
-            Err.Raise vbObjectError + 1704, "SendToFirstPromoter", "Invalid EUR amount in Filter_Output column H."
-        End If
-        If amountEUR <= 0 Then
-            Err.Raise vbObjectError + 1705, "SendToFirstPromoter", "EUR amount must be greater than zero."
+        stage = "Validate Stripe customer uid"
+        customerUID = Trim$(CStr(wsO.Cells(i, 12).Value))
+        If customerUID = vbNullString Then
+            Err.Raise vbObjectError + 1706, "SendToFirstPromoter", "Missing Stripe Customer ID / uid in Filter_Output column L."
         End If
 
-        If Not IsImportablePayoutStatus(payoutStatus) Then
-            stage = "Skip row with unknown payout status"
-            fpStatus = 0
-            resultLabel = "Skipped - " & IIf(payoutStatus = vbNullString, "missing payout status", payoutStatus)
-            fpResponse = "Not sent to FirstPromoter. Column J must be 'Already Paid' or 'To Be Paid'. Row status is '" & payoutStatus & "'."
-            requestPayload = vbNullString
-            WriteFirstPromoterLog wsLog, logRow, i, stage, payID, coupon, amountEUR, fpStatus, resultLabel, fpResponse, requestPayload
-            logRow = logRow + 1
-            SetImportStatusSafe wsO, i, "Skipped", RGB(255, 243, 205)
-            skippedCount = skippedCount + 1
-            GoTo RowComplete
-        End If
+        Call TryParseNumber(wsO.Cells(i, 8).Value, amountEUR)
 
-        stage = "Build FirstPromoter payload"
-        requestPayload = BuildFirstPromoterSalePayload(payID, payDate, custEmail, coupon, amountEUR, customerUID)
+        stage = "Build FirstPromoter signup payload"
+        requestPayload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, customerUID)
 
-        stage = "HTTP request to FirstPromoter"
-        Call PostFirstPromoterSale(requestPayload, apiKey, payDate, custEmail, coupon, customerUID, fpStatus, fpResponse)
-
-        If IsAlreadyPaidPayoutStatus(payoutStatus) Then
-            stage = "Mark historical commission paid"
-            Call MarkHistoricalCommissionPaid(payID, apiKey, fpStatus, fpResponse, resultLabel)
-        Else
-            resultLabel = FirstPromoterResultLabel(fpStatus)
-        End If
+        stage = "HTTP signup request to FirstPromoter"
+        Call FirstPromoterV2Request("POST", FP_SIGNUP_URL_V2, requestPayload, apiKey, fpStatus, fpResponse)
+        resultLabel = FirstPromoterReferralResultLabel(fpStatus)
 
         stage = "Write FirstPromoter log"
         WriteFirstPromoterLog wsLog, logRow, i, stage, payID, coupon, amountEUR, fpStatus, resultLabel, fpResponse, requestPayload
@@ -504,32 +481,14 @@ Public Sub SendToFirstPromoter()
         stage = "Update Filter_Output status"
         Select Case fpStatus
             Case 200
-                If IsAlreadyPaidPayoutStatus(payoutStatus) Then
-                    SetImportStatusSafe wsO, i, "Paid Imported", RGB(212, 237, 218)
-                    paidImportedCount = paidImportedCount + 1
-                Else
-                    SetImportStatusSafe wsO, i, "Yes", RGB(212, 237, 218)
-                    successCount = successCount + 1
-                End If
-            Case 204, 404
-                SetImportStatusSafe wsO, i, "No Referral", RGB(255, 243, 205)
-                noReferralCount = noReferralCount + 1
-            Case 409
-                SetImportStatusSafe wsO, i, "Duplicate", RGB(255, 243, 205)
-                duplicateCount = duplicateCount + 1
+                SetImportStatusSafe wsO, i, "Referral Imported", RGB(212, 237, 218)
+                importedCount = importedCount + 1
+            Case 422
+                SetImportStatusSafe wsO, i, "Referral Exists", RGB(255, 243, 205)
+                existingCount = existingCount + 1
             Case Else
-                If IsAlreadyPaidPayoutStatus(payoutStatus) Then
-                    SetImportStatusSafe wsO, i, "Paid Mark Error", RGB(248, 215, 218)
-                    errorCount = errorCount + 1
-                    MsgBox "Import stopped: an Already Paid row was imported or found, but could not be marked paid." & vbCrLf & _
-                           "Filter_Output row: " & i & vbCrLf & _
-                           "Payment ID: " & payID & vbCrLf & _
-                           "Check the log before continuing.", vbCritical
-                    Exit Sub
-                Else
-                    SetImportStatusSafe wsO, i, "Error", RGB(248, 215, 218)
-                    errorCount = errorCount + 1
-                End If
+                SetImportStatusSafe wsO, i, "Referral Error", RGB(248, 215, 218)
+                errorCount = errorCount + 1
         End Select
 
         SleepMs 300
@@ -543,35 +502,32 @@ RowFailed:
         Err.Clear
 
         fpStatus = 0
-        resultLabel = "VBA error before/during send"
+        resultLabel = "VBA error before/during referral import"
         fpResponse = "Stage: " & stage & " | Error " & rowErrNumber & ": " & rowErrDescription
 
         On Error GoTo RowLogFailed
         WriteFirstPromoterLog wsLog, logRow, i, stage, payID, coupon, amountEUR, fpStatus, resultLabel, fpResponse, requestPayload
         logRow = logRow + 1
-        SetImportStatusSafe wsO, i, "Error", RGB(248, 215, 218)
+        SetImportStatusSafe wsO, i, "Referral Error", RGB(248, 215, 218)
         errorCount = errorCount + 1
         On Error GoTo CleanFail
         GoTo RowComplete
 
 RowLogFailed:
-        MsgBox "Cannot write to FP_Import_Log." & vbCrLf & _
+        MsgBox "Cannot write to log sheet." & vbCrLf & _
                "Output row: " & i & vbCrLf & _
                "Original stage: " & stage & vbCrLf & _
                "Original error: " & rowErrNumber & " - " & rowErrDescription & vbCrLf & _
-               "Log error: " & Err.Number & " - " & Err.Description & vbCrLf & vbCrLf & _
-               "Check that FP_Import_Log exists, is not protected, and has writable cells.", vbCritical
+               "Log error: " & Err.Number & " - " & Err.Description, vbCritical
         Exit Sub
 
 RowComplete:
         On Error GoTo CleanFail
     Next i
 
-    MsgBox "Import complete." & vbCrLf & _
-           "To Be Paid tracked: " & successCount & vbCrLf & _
-           "Already Paid imported + marked paid: " & paidImportedCount & vbCrLf & _
-           "No referral (204/404): " & noReferralCount & vbCrLf & _
-           "Duplicates (409): " & duplicateCount & vbCrLf & _
+    MsgBox "Referral import complete." & vbCrLf & _
+           "Imported: " & importedCount & vbCrLf & _
+           "Already existed: " & existingCount & vbCrLf & _
            "Errors: " & errorCount & vbCrLf & _
            "Skipped: " & skippedCount, vbInformation
     Exit Sub
@@ -750,23 +706,23 @@ Public Sub DiagnoseFirstPromoterSelectedRow()
     If coupon = vbNullString Then Err.Raise vbObjectError + 1604, "DiagnoseFirstPromoterSelectedRow", "Missing promo/tracking coupon in column D."
     customerUID = Trim$(CStr(wsO.Cells(rowNumber, 12).Value))
 
-    If Not TryParseNumber(wsO.Cells(rowNumber, 8).Value, amountEUR) Then Err.Raise vbObjectError + 1605, "DiagnoseFirstPromoterSelectedRow", "Invalid EUR amount in column H."
-    If amountEUR <= 0 Then Err.Raise vbObjectError + 1606, "DiagnoseFirstPromoterSelectedRow", "EUR amount must be greater than zero."
+    Call TryParseNumber(wsO.Cells(rowNumber, 8).Value, amountEUR)
+    If customerUID = vbNullString Then Err.Raise vbObjectError + 1605, "DiagnoseFirstPromoterSelectedRow", "Missing Stripe Customer ID / uid in column L."
 
     Call GetFirstPromoterApiKey
-    If IsFirstPromoterV2() Then Call GetFirstPromoterLegacyApiKey
+    If Not IsFirstPromoterV2() Then Err.Raise vbObjectError + 1606, "DiagnoseFirstPromoterSelectedRow", "Referral-only import requires FP_ACCOUNT_ID / API v2."
 
     Dim requestPayload As String
-    requestPayload = BuildFirstPromoterSalePayload(payID, payDate, custEmail, coupon, amountEUR, customerUID)
+    requestPayload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, customerUID)
 
     MsgBox "Local validation OK. No request was sent." & vbCrLf & vbCrLf & _
            "Checks:" & vbCrLf & _
-           "- column D is sent both as promo_code and ref_id." & vbCrLf & _
+           "- column D is sent as ref_id." & vbCrLf & _
            "- email is the Stripe customer/lead email, not the promoter email." & vbCrLf & _
-           "- column L is sent as uid when present (Stripe customer id)." & vbCrLf & _
-           "- event_id is the Stripe payment id and must be unique." & vbCrLf & _
+           "- column L is sent as uid (Stripe customer id)." & vbCrLf & _
+           "- no sales, commissions, or payouts are created by referral-only import." & vbCrLf & _
            "- API mode: " & FirstPromoterApiMode() & vbCrLf & vbCrLf & _
-           "Payload:" & vbCrLf & requestPayload, vbInformation
+           "Signup payload:" & vbCrLf & requestPayload, vbInformation
     Exit Sub
 
 CleanFail:
@@ -879,6 +835,25 @@ Private Function ExtractFirstJsonNumberByKey(ByVal jsonText As String, ByVal key
     Loop
 
     If pos > startPos Then ExtractFirstJsonNumberByKey = Mid$(jsonText, startPos, pos - startPos)
+End Function
+
+Private Function FirstPromoterReferralResultLabel(ByVal fpStatus As Long) As String
+    Select Case fpStatus
+        Case 200
+            FirstPromoterReferralResultLabel = "Referral imported"
+        Case 422
+            FirstPromoterReferralResultLabel = "Referral already exists"
+        Case 400
+            FirstPromoterReferralResultLabel = "Bad request - check signup payload"
+        Case 401, 403
+            FirstPromoterReferralResultLabel = "Authentication/authorization error"
+        Case 404
+            FirstPromoterReferralResultLabel = "ref_id not found or invalid"
+        Case 0
+            FirstPromoterReferralResultLabel = "VBA/WinHTTP error"
+        Case Else
+            FirstPromoterReferralResultLabel = "HTTP " & CStr(fpStatus)
+    End Select
 End Function
 
 Private Function FirstPromoterResultLabel(ByVal fpStatus As Long) As String
