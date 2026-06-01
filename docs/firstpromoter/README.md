@@ -105,7 +105,7 @@ Per API v2 il modulo ora usa un flusso protetto:
 2. chiama `PUT https://firstpromoter.com/api/v1/leads/update` con la `FP_LEGACY_API_KEY` per impostare `customer_since` alla data storica;
 3. invia la sale solo se il backdate di `customer_since` ha successo.
 
-Questo evita di creare commissioni pagabili quando FirstPromoter terrebbe `Customer Since` alla data odierna. Se `FP_LEGACY_API_KEY` manca o l'update `customer_since` fallisce, la sale non viene inviata e la riga va in errore nel log.
+Questo evita di creare commissioni pagabili quando FirstPromoter terrebbe `Customer Since` alla data odierna. Se `FP_LEGACY_API_KEY` manca, il modulo si ferma prima di creare signup/lead; se l'update `customer_since` fallisce, la sale non viene inviata e la riga va in errore nel log.
 
 Se un lead/customer e gia stato creato da un test precedente con `Customer Since` odierno, esegui il nuovo flusso su una riga di test e verifica nel log che l'update `customer_since` risponda `200`. Se FirstPromoter non aggiorna quel record, va corretto/eliminato lato FirstPromoter prima di reimportare.
 

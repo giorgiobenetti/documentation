@@ -370,6 +370,7 @@ Public Sub SendToFirstPromoter()
 
     Dim apiKey As String
     apiKey = GetFirstPromoterApiKey()
+    If IsFirstPromoterV2() Then Call GetFirstPromoterLegacyApiKey
 
     Dim lastRow As Long
     lastRow = wsO.Cells(wsO.Rows.Count, 1).End(xlUp).Row
@@ -754,6 +755,7 @@ Public Sub DiagnoseFirstPromoterSelectedRow()
     If amountEUR <= 0 Then Err.Raise vbObjectError + 1606, "DiagnoseFirstPromoterSelectedRow", "EUR amount must be greater than zero."
 
     Call GetFirstPromoterApiKey
+    If IsFirstPromoterV2() Then Call GetFirstPromoterLegacyApiKey
 
     Dim requestPayload As String
     requestPayload = BuildFirstPromoterSalePayload(payID, payDate, custEmail, coupon, amountEUR, customerUID)
@@ -950,6 +952,12 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
     http.setTimeouts 5000, 10000, 30000, 30000
 
     If IsFirstPromoterV2() Then
+        If Trim$(FP_LEGACY_API_KEY) = vbNullString Then
+            fpStatus = 0
+            fpResponse = "Missing FP_LEGACY_API_KEY. No signup or sale was sent because customer_since cannot be backdated safely."
+            Exit Sub
+        End If
+
         Dim signupStatus As Long
         Dim signupResponse As String
         Dim signupPayload As String
@@ -1002,12 +1010,7 @@ Private Sub UpdateFirstPromoterCustomerSince(ByVal customerSinceDate As Date, _
     On Error GoTo RequestFailed
 
     Dim legacyApiKey As String
-    legacyApiKey = Trim$(FP_LEGACY_API_KEY)
-    If legacyApiKey = vbNullString Then
-        fpStatus = 0
-        fpResponse = "Missing FP_LEGACY_API_KEY. Sale was not sent because customer_since cannot be backdated safely."
-        Exit Sub
-    End If
+    legacyApiKey = GetFirstPromoterLegacyApiKey()
 
     Dim queryString As String
     If Trim$(customerUID) <> vbNullString Then
@@ -1609,6 +1612,15 @@ Private Function GetFirstPromoterApiKey() As String
     End If
 
     GetFirstPromoterApiKey = Trim$(FP_API_KEY)
+End Function
+
+Private Function GetFirstPromoterLegacyApiKey() As String
+    If Trim$(FP_LEGACY_API_KEY) = vbNullString Then
+        Err.Raise vbObjectError + 1502, "GetFirstPromoterLegacyApiKey", _
+            "FirstPromoter Legacy API key is missing. Set FP_LEGACY_API_KEY before using API v2 imports, so customer_since can be backdated before any sale is sent."
+    End If
+
+    GetFirstPromoterLegacyApiKey = Trim$(FP_LEGACY_API_KEY)
 End Function
 
 Private Sub SleepMs(ByVal milliseconds As Long)
