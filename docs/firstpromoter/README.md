@@ -66,7 +66,7 @@ Se alcune righe risultano inviate ma non compaiono in FirstPromoter, controlla `
 | I | Payload inviato; in v1 query string, in v2 JSON |
 | J | API mode usata (`v1` o `v2`) |
 
-Se il log non si compila, la macro ora mostra un errore esplicito: controlla che `FP_Import_Log` non sia protetto e che le celle A:J siano scrivibili.
+Se `FP_Import_Log` non e scrivibile, la macro crea/usa automaticamente `FP_Debug_Log` e scrive li gli stessi dettagli. Il messaggio di conferma indica il foglio log effettivo usato.
 
 Se `SendToFirstPromoter` mostra `Operazione terminata`, la richiesta HTTP e stata interrotta da Excel/Windows/MSXML prima di ricevere una risposta API. La versione aggiornata usa `MSXML2.ServerXMLHTTP.6.0` e registra l'errore per singola riga in `FP_Import_Log` con stato `0`, invece di fermare tutto l'import.
 

@@ -29,6 +29,7 @@ Private Const SHEET_COUPON_MAP As String = "Coupon_Map"
 Private Const SHEET_PAYMENTS As String = "Payments"
 Private Const SHEET_FILTER_OUTPUT As String = "Filter_Output"
 Private Const SHEET_FP_IMPORT_LOG As String = "FP_Import_Log"
+Private Const SHEET_FP_DEBUG_LOG As String = "FP_Debug_Log"
 
 Private Const OUTPUT_FIRST_ROW As Long = 11
 Private Const MAP_FIRST_ROW As Long = 4
@@ -364,7 +365,7 @@ Public Sub SendToFirstPromoter()
     Dim wsO As Worksheet
     Dim wsLog As Worksheet
     Set wsO = GetToolWorksheet(SHEET_FILTER_OUTPUT)
-    Set wsLog = GetToolWorksheet(SHEET_FP_IMPORT_LOG)
+    Set wsLog = GetWritableFirstPromoterLogWorksheet(GetToolWorksheet(SHEET_FP_IMPORT_LOG))
 
     Dim apiKey As String
     apiKey = GetFirstPromoterApiKey()
@@ -377,11 +378,11 @@ Public Sub SendToFirstPromoter()
         Exit Sub
     End If
 
-    EnsureFirstPromoterLogHeaders wsLog
+    ' Headers are already validated by GetWritableFirstPromoterLogWorksheet.
 
     Dim confirm As VbMsgBoxResult
     confirm = MsgBox("Send " & (lastRow - OUTPUT_FIRST_ROW + 1) & " transactions to FirstPromoter?" & vbCrLf & vbCrLf & _
-                     "Every attempted row will be written to FP_Import_Log.", vbYesNo + vbQuestion)
+                     "Every attempted row will be written to " & wsLog.Name & ".", vbYesNo + vbQuestion)
     If confirm = vbNo Then Exit Sub
 
     Dim logRow As Long
@@ -559,6 +560,54 @@ CleanFail:
     MsgBox "SendToFirstPromoter failed before row processing/logging:" & vbCrLf & _
            "Error " & Err.Number & ": " & Err.Description, vbCritical
 End Sub
+
+Private Function GetWritableFirstPromoterLogWorksheet(ByVal preferredLog As Worksheet) As Worksheet
+    On Error Resume Next
+    Err.Clear
+    EnsureFirstPromoterLogHeaders preferredLog
+    If Err.Number = 0 Then
+        Set GetWritableFirstPromoterLogWorksheet = preferredLog
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    Dim preferredError As String
+    preferredError = "FP_Import_Log not writable: " & Err.Number & " - " & Err.Description
+    Err.Clear
+    On Error GoTo 0
+
+    Dim debugLog As Worksheet
+    Set debugLog = GetOrCreateWorksheet(SHEET_FP_DEBUG_LOG)
+    EnsureFirstPromoterLogHeaders debugLog
+
+    Dim debugRow As Long
+    debugRow = NextFirstPromoterLogRow(debugLog)
+    debugLog.Cells(debugRow, 1).Value = Now
+    debugLog.Cells(debugRow, 2).Value = 0
+    debugLog.Cells(debugRow, 3).Value = "LOG_FALLBACK"
+    debugLog.Cells(debugRow, 7).Value = "Using FP_Debug_Log"
+    debugLog.Cells(debugRow, 8).Value = preferredError
+    debugLog.Cells(debugRow, 10).Value = FirstPromoterApiMode()
+
+    Set GetWritableFirstPromoterLogWorksheet = debugLog
+End Function
+
+Private Function GetOrCreateWorksheet(ByVal sheetName As String) As Worksheet
+    Dim wb As Workbook
+    Set wb = GetToolWorkbook()
+
+    Dim ws As Worksheet
+    For Each ws In wb.Worksheets
+        If NormalizeSheetName(ws.Name) = NormalizeSheetName(sheetName) Then
+            Set GetOrCreateWorksheet = ws
+            Exit Function
+        End If
+    Next ws
+
+    Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    ws.Name = sheetName
+    Set GetOrCreateWorksheet = ws
+End Function
 
 Private Sub EnsureFirstPromoterLogHeaders(ByVal wsLog As Worksheet)
     On Error GoTo HeaderFailed
