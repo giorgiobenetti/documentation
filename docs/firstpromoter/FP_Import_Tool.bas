@@ -470,7 +470,7 @@ Public Sub SendToFirstPromoter()
         requestPayload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, customerUID)
 
         stage = "HTTP signup request to FirstPromoter"
-        Call FirstPromoterV2Request("POST", FP_SIGNUP_URL_V2, requestPayload, apiKey, fpStatus, fpResponse)
+        Call PostFirstPromoterSignup(requestPayload, apiKey, fpStatus, fpResponse)
         resultLabel = FirstPromoterReferralResultLabel(fpStatus)
 
         stage = "Write FirstPromoter log"
@@ -697,7 +697,7 @@ Public Sub TestFirstPromoterSignupSelectedRow()
     If customerUID = vbNullString Then Err.Raise vbObjectError + 1654, "TestFirstPromoterSignupSelectedRow", "Missing uid / Stripe Customer ID in column L."
 
     payload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, customerUID)
-    Call FirstPromoterV2Request("POST", FP_SIGNUP_URL_V2, payload, GetFirstPromoterApiKey(), fpStatus, fpResponse)
+    Call PostFirstPromoterSignup(payload, GetFirstPromoterApiKey(), fpStatus, fpResponse)
 
     MsgBox "FirstPromoter signup test" & vbCrLf & _
            "HTTP status: " & fpStatus & vbCrLf & _
@@ -943,7 +943,7 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
         Dim signupPayload As String
         signupPayload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, customerUID)
 
-        Call FirstPromoterV2Request("POST", FP_SIGNUP_URL_V2, signupPayload, apiKey, signupStatus, signupResponse)
+        Call PostFirstPromoterSignup(signupPayload, apiKey, signupStatus, signupResponse)
         If signupStatus <> 200 And signupStatus <> 422 Then
             fpStatus = signupStatus
             fpResponse = "Signup failed; sale not sent: " & signupResponse & " | Signup payload: " & signupPayload
@@ -998,6 +998,32 @@ Private Sub PostFirstPromoterJson(ByVal url As String, _
                                   ByRef fpStatus As Long, _
                                   ByRef fpResponse As String)
     Call FirstPromoterV2Request("POST", url, jsonPayload, apiKey, fpStatus, fpResponse)
+End Sub
+
+Private Sub PostFirstPromoterSignup(ByVal jsonPayload As String, _
+                                      ByVal apiKey As String, _
+                                      ByRef fpStatus As Long, _
+                                      ByRef fpResponse As String)
+    On Error GoTo RequestFailed
+
+    Dim http As Object
+    Set http = CreateObject("MSXML2.XMLHTTP.6.0")
+
+    http.Open "POST", FP_SIGNUP_URL_V2, False
+    http.setRequestHeader "Content-Type", "application/json"
+    http.setRequestHeader "Accept", "application/json"
+    http.setRequestHeader "Authorization", "Bearer " & NormalizeBearerToken(apiKey)
+    http.setRequestHeader "Account-ID", NormalizeAccountID(GetFirstPromoterAccountID())
+    http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
+    http.Send CStr(jsonPayload)
+
+    fpStatus = CLng(http.Status)
+    fpResponse = Left$(CStr(http.responseText), 1000)
+    Exit Sub
+
+RequestFailed:
+    fpStatus = 0
+    fpResponse = "MSXML signup error " & Err.Number & ": " & Err.Description
 End Sub
 
 Private Sub FirstPromoterV2Request(ByVal method As String, _
