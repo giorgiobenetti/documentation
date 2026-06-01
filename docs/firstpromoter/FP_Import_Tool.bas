@@ -960,16 +960,23 @@ Private Sub FirstPromoterV2Request(ByVal method As String, _
                                    ByRef fpResponse As String)
     On Error GoTo RequestFailed
 
+    Dim hasJsonBody As Boolean
+    hasJsonBody = (Len(jsonPayload) > 0)
+
     Dim http As Object
     Set http = CreateObject("WinHttp.WinHttpRequest.5.1")
     http.SetTimeouts 5000, 10000, 30000, 30000
     http.Open method, url, False
     http.SetRequestHeader "Accept", "application/json"
-    If jsonPayload <> vbNullString Then http.SetRequestHeader "Content-Type", "application/json"
+    If hasJsonBody Then http.SetRequestHeader "Content-Type", "application/json; charset=utf-8"
     http.SetRequestHeader "Authorization", "Bearer " & apiKey
     http.SetRequestHeader "Account-ID", GetFirstPromoterAccountID()
     http.SetRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
-    http.Send jsonPayload
+    If hasJsonBody Then
+        http.Send StrConv(jsonPayload, vbFromUnicode)
+    Else
+        http.Send vbNullString
+    End If
 
     fpStatus = CLng(http.Status)
     fpResponse = Left$(CStr(http.ResponseText), 1000)

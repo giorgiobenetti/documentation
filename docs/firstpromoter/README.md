@@ -55,7 +55,7 @@ Payload inviato per ogni riga:
 
 Questo crea/aggiorna il referral associato al promoter, ma non crea vendite, commissioni o payout. I rinnovi futuri dovranno essere tracciati da FirstPromoter usando lo stesso `uid` Stripe customer id.
 
-Le chiamate FirstPromoter usano `WinHttp.WinHttpRequest.5.1` per evitare errori VBA/MSXML nella sequenza Open/header/Send.
+Le chiamate FirstPromoter usano `WinHttp.WinHttpRequest.5.1` e inviano i body JSON come byte con `Content-Type: application/json; charset=utf-8`, per evitare che l endpoint li interpreti come richieste non-JSON.
 
 ### Verifica locale senza inviare
 
