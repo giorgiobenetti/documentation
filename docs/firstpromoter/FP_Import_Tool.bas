@@ -1006,15 +1006,17 @@ Private Sub PostFirstPromoterSignup(ByVal jsonPayload As String, _
                                       ByRef fpResponse As String)
     On Error GoTo RequestFailed
 
+    ' Dedicated, Postman-equivalent request for referral-only imports.
+    ' Do not route this through generic helpers: this endpoint only needs JSON signup.
     Dim http As Object
-    Set http = CreateObject("MSXML2.XMLHTTP.6.0")
+    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 
+    http.setTimeouts 5000, 10000, 30000, 30000
     http.Open "POST", FP_SIGNUP_URL_V2, False
     http.setRequestHeader "Content-Type", "application/json"
     http.setRequestHeader "Accept", "application/json"
     http.setRequestHeader "Authorization", "Bearer " & NormalizeBearerToken(apiKey)
     http.setRequestHeader "Account-ID", NormalizeAccountID(GetFirstPromoterAccountID())
-    http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
     http.Send CStr(jsonPayload)
 
     fpStatus = CLng(http.Status)
@@ -1023,7 +1025,7 @@ Private Sub PostFirstPromoterSignup(ByVal jsonPayload As String, _
 
 RequestFailed:
     fpStatus = 0
-    fpResponse = "MSXML signup error " & Err.Number & ": " & Err.Description
+    fpResponse = "Signup HTTP error " & Err.Number & ": " & Err.Description
 End Sub
 
 Private Sub FirstPromoterV2Request(ByVal method As String, _
@@ -1670,11 +1672,24 @@ Private Function CleanConfigValue(ByVal value As String) As String
     value = Replace$(value, vbLf, vbNullString)
     value = Replace$(value, vbTab, vbNullString)
     value = Replace$(value, ChrW$(160), vbNullString)
+    value = Trim$(value)
+    If Len(value) >= 2 Then
+        If (Left$(value, 1) = Chr$(34) And Right$(value, 1) = Chr$(34)) Or _
+           (Left$(value, 1) = "'" And Right$(value, 1) = "'") Then
+            value = Mid$(value, 2, Len(value) - 2)
+        End If
+    End If
     CleanConfigValue = Trim$(value)
 End Function
 
 Private Function NormalizeBearerToken(ByVal value As String) As String
     value = CleanConfigValue(value)
+    If InStr(1, value, ":", vbTextCompare) > 0 Then
+        If LCase$(Left$(value, InStr(1, value, ":", vbTextCompare) - 1)) = "authorization" Then
+            value = Mid$(value, InStr(1, value, ":", vbTextCompare) + 1)
+        End If
+    End If
+    value = Trim$(value)
     If LCase$(Left$(value, 7)) = "bearer " Then value = Mid$(value, 8)
     NormalizeBearerToken = Trim$(value)
 End Function
