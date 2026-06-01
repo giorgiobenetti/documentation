@@ -10,11 +10,10 @@ Private Declare Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 #End If
 
 ' API key selection:
-' API credentials are read from workbook-level named ranges first:
-' FP_API_KEY, FP_LEGACY_API_KEY, FP_ACCOUNT_ID. Constants below are optional fallbacks.
-Private Const FP_API_KEY_FALLBACK As String = ""
-Private Const FP_LEGACY_API_KEY_FALLBACK As String = ""
-Private Const FP_ACCOUNT_ID_FALLBACK As String = ""
+' Put credentials here to bypass Named Range ambiguity. Constants win over Named Ranges when non-empty.
+Private Const FP_API_KEY_HARDCODED As String = ""
+Private Const FP_LEGACY_API_KEY_HARDCODED As String = ""
+Private Const FP_ACCOUNT_ID_HARDCODED As String = ""
 ' Already Paid rows are imported, then immediately marked paid. If mark-paid fails, import stops.
 Private Const FP_IMPORT_ALREADY_PAID As Boolean = True
 Private Const FP_TRACK_URL_V1 As String = "https://firstpromoter.com/api/v1/track/sale"
@@ -663,6 +662,55 @@ Private Sub SetImportStatusSafe(ByVal ws As Worksheet, _
 End Sub
 
 ' ---------------------------------------------
+' Test: invia solo la riga selezionata come referral/signup
+' ---------------------------------------------
+Public Sub TestFirstPromoterSignupSelectedRow()
+    On Error GoTo CleanFail
+
+    Dim wsO As Worksheet
+    Set wsO = GetToolWorksheet(SHEET_FILTER_OUTPUT)
+
+    If ActiveCell Is Nothing Or NormalizeSheetName(ActiveCell.Worksheet.Name) <> NormalizeSheetName(wsO.Name) Then
+        MsgBox "Select one output row in Filter_Output first.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim rowNumber As Long
+    rowNumber = ActiveCell.Row
+    If rowNumber < OUTPUT_FIRST_ROW Then Err.Raise vbObjectError + 1650, "TestFirstPromoterSignupSelectedRow", "Select a transaction row from row " & OUTPUT_FIRST_ROW & " onward."
+
+    Dim payDate As Date
+    Dim custEmail As String
+    Dim coupon As String
+    Dim customerUID As String
+    Dim payload As String
+    Dim fpStatus As Long
+    Dim fpResponse As String
+
+    If Not TryParseDate(wsO.Cells(rowNumber, 2).Value, payDate) Then Err.Raise vbObjectError + 1651, "TestFirstPromoterSignupSelectedRow", "Invalid date in column B."
+    custEmail = NormalizeEmail(wsO.Cells(rowNumber, 3).Value)
+    coupon = Trim$(CStr(wsO.Cells(rowNumber, 4).Value))
+    customerUID = Trim$(CStr(wsO.Cells(rowNumber, 12).Value))
+
+    If custEmail = vbNullString Then Err.Raise vbObjectError + 1652, "TestFirstPromoterSignupSelectedRow", "Missing email in column C."
+    If coupon = vbNullString Then Err.Raise vbObjectError + 1653, "TestFirstPromoterSignupSelectedRow", "Missing ref_id/coupon in column D."
+    If customerUID = vbNullString Then Err.Raise vbObjectError + 1654, "TestFirstPromoterSignupSelectedRow", "Missing uid / Stripe Customer ID in column L."
+
+    payload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, customerUID)
+    Call FirstPromoterV2Request("POST", FP_SIGNUP_URL_V2, payload, GetFirstPromoterApiKey(), fpStatus, fpResponse)
+
+    MsgBox "FirstPromoter signup test" & vbCrLf & _
+           "HTTP status: " & fpStatus & vbCrLf & _
+           "Response:" & vbCrLf & fpResponse & vbCrLf & vbCrLf & _
+           "Payload:" & vbCrLf & payload, vbInformation
+    Exit Sub
+
+CleanFail:
+    MsgBox "TestFirstPromoterSignupSelectedRow failed:" & vbCrLf & _
+           "Error " & Err.Number & ": " & Err.Description, vbCritical
+End Sub
+
+' ---------------------------------------------
 ' Diagnostica: verifica riga selezionata senza inviare a FirstPromoter
 ' ---------------------------------------------
 Public Sub DiagnoseFirstPromoterSelectedRow()
@@ -884,7 +932,7 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
                                   ByRef fpStatus As Long, _
                                   ByRef fpResponse As String)
     If IsFirstPromoterV2() Then
-        If GetConfigValue("FP_LEGACY_API_KEY", FP_LEGACY_API_KEY_FALLBACK) = vbNullString Then
+        If GetConfigValue("FP_LEGACY_API_KEY", FP_LEGACY_API_KEY_HARDCODED) = vbNullString Then
             fpStatus = 0
             fpResponse = "Missing FP_LEGACY_API_KEY. No signup or sale was sent because customer_since cannot be backdated safely."
             Exit Sub
@@ -1546,11 +1594,11 @@ End Function
 
 Private Function GetFirstPromoterApiKey() As String
     Dim apiKey As String
-    apiKey = GetConfigValue("FP_API_KEY", FP_API_KEY_FALLBACK)
+    apiKey = GetConfigValue("FP_API_KEY", FP_API_KEY_HARDCODED)
 
     If apiKey = vbNullString Then
         Err.Raise vbObjectError + 1501, "GetFirstPromoterApiKey", _
-            "FirstPromoter API key is missing. Create workbook named range FP_API_KEY or set FP_API_KEY_FALLBACK in this module."
+            "FirstPromoter API key is missing. Create workbook named range FP_API_KEY or set FP_API_KEY_HARDCODED in this module."
     End If
 
     GetFirstPromoterApiKey = apiKey
@@ -1558,7 +1606,7 @@ End Function
 
 Private Function GetFirstPromoterLegacyApiKey() As String
     Dim legacyApiKey As String
-    legacyApiKey = GetConfigValue("FP_LEGACY_API_KEY", FP_LEGACY_API_KEY_FALLBACK)
+    legacyApiKey = GetConfigValue("FP_LEGACY_API_KEY", FP_LEGACY_API_KEY_HARDCODED)
 
     If legacyApiKey = vbNullString Then
         Err.Raise vbObjectError + 1502, "GetFirstPromoterLegacyApiKey", _
@@ -1569,21 +1617,26 @@ Private Function GetFirstPromoterLegacyApiKey() As String
 End Function
 
 Private Function GetFirstPromoterAccountID() As String
-    GetFirstPromoterAccountID = GetConfigValue("FP_ACCOUNT_ID", FP_ACCOUNT_ID_FALLBACK)
+    GetFirstPromoterAccountID = GetConfigValue("FP_ACCOUNT_ID", FP_ACCOUNT_ID_HARDCODED)
 End Function
 
-Private Function GetConfigValue(ByVal configName As String, ByVal fallbackValue As String) As String
+Private Function GetConfigValue(ByVal configName As String, ByVal hardcodedValue As String) As String
+    hardcodedValue = CleanConfigValue(hardcodedValue)
+    If hardcodedValue <> vbNullString Then
+        GetConfigValue = hardcodedValue
+        Exit Function
+    End If
+
     On Error GoTo MissingName
 
     Dim wb As Workbook
     Set wb = GetToolWorkbook()
 
     GetConfigValue = CleanConfigValue(CStr(wb.Names(configName).RefersToRange.Value))
-    If GetConfigValue = vbNullString Then GetConfigValue = CleanConfigValue(fallbackValue)
     Exit Function
 
 MissingName:
-    GetConfigValue = CleanConfigValue(fallbackValue)
+    GetConfigValue = vbNullString
 End Function
 
 Private Function CleanConfigValue(ByVal value As String) As String

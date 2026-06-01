@@ -57,6 +57,10 @@ Questo crea/aggiorna il referral associato al promoter, ma non crea vendite, com
 
 Le chiamate FirstPromoter usano `WinHttp.WinHttpRequest.5.1` e inviano i body JSON come byte con `Content-Type: application/json; charset=utf-8`, per evitare che l endpoint li interpreti come richieste non-JSON.
 
+### Test singola riga
+
+Per testare una riga senza ciclo massivo, seleziona una riga in `Filter_Output` e lancia `TestFirstPromoterSignupSelectedRow`. Mostra HTTP status, response e payload della sola chiamata `/track/signup`.
+
 ### Verifica locale senza inviare
 
 Usa `DiagnoseFirstPromoterSelectedRow` selezionando una riga in `Filter_Output`: la macro non invia nulla a FirstPromoter, ma verifica che id pagamento, data, email cliente, coupon, importo EUR e API key siano leggibili, poi mostra la query che verrebbe inviata.
