@@ -29,6 +29,7 @@ Private Const SHEET_PAYMENTS As String = "Payments"
 Private Const SHEET_FILTER_OUTPUT As String = "Filter_Output"
 Private Const SHEET_FP_IMPORT_LOG As String = "FP_Import_Log"
 Private Const SHEET_FP_DEBUG_LOG As String = "FP_Debug_Log"
+Private Const SHEET_INFLUENCER_REPORT As String = "Influencer_Report"
 
 Private Const OUTPUT_FIRST_ROW As Long = 11
 Private Const MAP_FIRST_ROW As Long = 4
@@ -353,6 +354,173 @@ NextPaymentRow:
 
 CleanFail:
     MsgBox "GenerateOutput failed:" & vbCrLf & Err.Description, vbCritical
+End Sub
+
+
+' ---------------------------------------------
+' REPORT: fatturato e commissioni influencer
+' ---------------------------------------------
+Public Sub GenerateInfluencerReport()
+    On Error GoTo CleanFail
+
+    Dim wsP As Worksheet
+    Dim wsM As Worksheet
+    Dim wsR As Worksheet
+
+    Set wsP = GetToolWorksheet(SHEET_PAYMENTS)
+    Set wsM = GetToolWorksheet(SHEET_COUPON_MAP)
+    Set wsR = GetOrCreateWorksheet(SHEET_INFLUENCER_REPORT)
+
+    SetupInfluencerReportSheet wsR
+
+    Dim reportFrom As Date
+    Dim reportTo As Date
+    If Not TryParseDate(wsR.Range("B2").Value, reportFrom) Then
+        Err.Raise vbObjectError + 1901, "GenerateInfluencerReport", "Enter report start date in Influencer_Report!B2."
+    End If
+    reportFrom = DateValue(reportFrom)
+    If TryParseDate(wsR.Range("D2").Value, reportTo) Then
+        reportTo = DateValue(reportTo)
+    Else
+        reportTo = Date
+    End If
+    If reportFrom > reportTo Then Err.Raise vbObjectError + 1902, "GenerateInfluencerReport", "Report start date is after end date."
+
+    Dim commissionRate As Double
+    commissionRate = GetCommissionRate(wsR.Range("B4").Value)
+
+    Dim couponFilters As Object
+    Set couponFilters = BuildCouponFilter(Trim$(CStr(wsR.Range("B3").Value)))
+
+    Dim couponByEmail As Object
+    Dim affiliateByEmail As Object
+    Set couponByEmail = CreateObject("Scripting.Dictionary")
+    Set affiliateByEmail = CreateObject("Scripting.Dictionary")
+    LoadCouponMap wsM, couponByEmail, affiliateByEmail
+
+    Dim dataStartRow As Long
+    Dim colID As Long
+    Dim colCreated As Long
+    Dim colAmount As Long
+    Dim colRefundedAmount As Long
+    Dim colCurrency As Long
+    Dim colRefundedDate As Long
+    Dim colEmail As Long
+    Dim colCustomerID As Long
+    Dim colDisputeDate As Long
+    ResolvePaymentsLayout wsP, dataStartRow, colID, colCreated, colAmount, colRefundedAmount, colCurrency, colRefundedDate, colEmail, colCustomerID, colDisputeDate
+
+    Dim lastClearRow As Long
+    lastClearRow = Application.Max(8, wsR.Cells(wsR.Rows.Count, 1).End(xlUp).Row, wsR.Cells(wsR.Rows.Count, 12).End(xlUp).Row)
+    ClearRangeContentsAndFill wsR.Range("A7:Q" & lastClearRow)
+    WriteInfluencerReportHeaders wsR
+
+    Dim summary As Object
+    Dim uniqueCustomers As Object
+    Set summary = CreateObject("Scripting.Dictionary")
+    Set uniqueCustomers = CreateObject("Scripting.Dictionary")
+
+    Dim lastRow As Long
+    lastRow = wsP.Cells(wsP.Rows.Count, colID).End(xlUp).Row
+
+    Dim outRow As Long
+    outRow = 8
+
+    Dim i As Long
+    For i = dataStartRow To lastRow
+        Dim payID As String
+        Dim payDate As Date
+        Dim payDateOnly As Date
+        Dim amount As Double
+        Dim amountRefunded As Double
+        Dim paymentCurrency As String
+        Dim refundDate As String
+        Dim disputeDate As String
+        Dim custEmail As String
+        Dim customerUID As String
+
+        payID = Trim$(CStr(wsP.Cells(i, colID).Value))
+        If payID = vbNullString Then GoTo NextPayment
+        If Not TryParseDate(wsP.Cells(i, colCreated).Value, payDate) Then GoTo NextPayment
+        payDateOnly = DateValue(payDate)
+        If payDateOnly < reportFrom Or payDateOnly > reportTo Then GoTo NextPayment
+        If Not TryParseNumber(wsP.Cells(i, colAmount).Value, amount) Then GoTo NextPayment
+        If Not TryParseNumber(wsP.Cells(i, colRefundedAmount).Value, amountRefunded) Then amountRefunded = 0
+
+        paymentCurrency = UCase$(Trim$(CStr(wsP.Cells(i, colCurrency).Value)))
+        refundDate = Trim$(CStr(wsP.Cells(i, colRefundedDate).Value))
+        disputeDate = Trim$(CStr(wsP.Cells(i, colDisputeDate).Value))
+        custEmail = NormalizeEmail(wsP.Cells(i, colEmail).Value)
+        customerUID = vbNullString
+        If colCustomerID > 0 Then customerUID = Trim$(CStr(wsP.Cells(i, colCustomerID).Value))
+
+        If amount <= 0 Then GoTo NextPayment
+        If amountRefunded > 0 Then GoTo NextPayment
+        If refundDate <> vbNullString Then GoTo NextPayment
+        If disputeDate <> vbNullString Then GoTo NextPayment
+        If custEmail = vbNullString Then GoTo NextPayment
+
+        Dim coupon As String
+        Dim affiliateName As String
+        coupon = vbNullString
+        affiliateName = vbNullString
+        If couponByEmail.Exists(custEmail) Then coupon = Trim$(CStr(couponByEmail(custEmail)))
+        If affiliateByEmail.Exists(custEmail) Then affiliateName = Trim$(CStr(affiliateByEmail(custEmail)))
+        If Not CouponIsAllowed(coupon, couponFilters) Then GoTo NextPayment
+
+        Dim rate As Double
+        Dim amountEUR As Double
+        Select Case paymentCurrency
+            Case "EUR"
+                rate = 1
+                amountEUR = amount
+            Case "USD"
+                rate = GetRate(payDateOnly)
+                amountEUR = amount / rate
+            Case Else
+                GoTo NextPayment
+        End Select
+
+        Dim commissionEUR As Double
+        commissionEUR = Round(amountEUR * commissionRate, 2)
+
+        wsR.Cells(outRow, 1).Value = payDateOnly
+        SetNumberFormatSafe wsR.Cells(outRow, 1), "dd/mm/yyyy"
+        wsR.Cells(outRow, 2).Value = MaskCustomer(customerUID, custEmail)
+        wsR.Cells(outRow, 3).Value = coupon
+        wsR.Cells(outRow, 4).Value = affiliateName
+        wsR.Cells(outRow, 5).Value = Round(amountEUR, 2)
+        SetNumberFormatSafe wsR.Cells(outRow, 5), "#,##0.00"
+        wsR.Cells(outRow, 6).Value = commissionEUR
+        SetNumberFormatSafe wsR.Cells(outRow, 6), "#,##0.00"
+        wsR.Cells(outRow, 7).Value = payID
+        wsR.Cells(outRow, 8).Value = amount
+        SetNumberFormatSafe wsR.Cells(outRow, 8), "#,##0.00"
+        wsR.Cells(outRow, 9).Value = paymentCurrency
+        wsR.Cells(outRow, 10).Value = Round(rate, 4)
+        SetNumberFormatSafe wsR.Cells(outRow, 10), "0.0000"
+
+        UpdateInfluencerSummary summary, uniqueCustomers, coupon, affiliateName, customerUID, custEmail, amountEUR, commissionEUR
+        outRow = outRow + 1
+
+NextPayment:
+    Next i
+
+    WriteInfluencerSummary wsR, summary, uniqueCustomers
+    wsR.Range("B4").Value = commissionRate
+    SetNumberFormatSafe wsR.Range("B4"), "0.00%"
+    wsR.Cells(5, 1).Value = "Last generated"
+    wsR.Cells(5, 2).Value = Now
+    SetNumberFormatSafe wsR.Cells(5, 2), "dd/mm/yyyy hh:mm:ss"
+
+    MsgBox "Influencer report generated." & vbCrLf & _
+           "Transactions: " & (outRow - 8) & vbCrLf & _
+           "Commission rate: " & Format$(commissionRate, "0.00%"), vbInformation
+    Exit Sub
+
+CleanFail:
+    MsgBox "GenerateInfluencerReport failed:" & vbCrLf & _
+           "Error " & Err.Number & ": " & Err.Description, vbCritical
 End Sub
 
 ' ---------------------------------------------
@@ -1412,7 +1580,7 @@ Private Sub ResolvePaymentsLayout(ByVal ws As Worksheet, _
     colCurrency = 5
     colRefundedDate = 6
     colEmail = 7
-    colCustomerID = 0
+    colCustomerID = 9 ' Optional Stripe customer id in column I.
     colDisputeDate = 8
 End Sub
 
@@ -1435,6 +1603,134 @@ Private Function FindHeaderColumnInRow(ByVal ws As Worksheet, ByVal rowNumber As
             Exit Function
         End If
     Next col
+End Function
+
+Private Sub SetupInfluencerReportSheet(ByVal ws As Worksheet)
+    ws.Cells(1, 1).Value = "Influencer report"
+    ws.Cells(2, 1).Value = "Date from"
+    ws.Cells(2, 3).Value = "Date to"
+    ws.Cells(3, 1).Value = "Coupons"
+    ws.Cells(3, 3).Value = "Comma-separated coupon list in B3; leave B3 blank for all mapped coupons"
+    ws.Cells(4, 1).Value = "Commission rate"
+    If Trim$(CStr(ws.Range("B4").Value)) = vbNullString Then
+        ws.Range("B4").Value = 0.095
+        SetNumberFormatSafe ws.Range("B4"), "0.00%"
+    End If
+End Sub
+
+Private Sub WriteInfluencerReportHeaders(ByVal ws As Worksheet)
+    ws.Range("A6").Value = "Details"
+    ws.Range("A7:J7").Value = Array("Date", "Customer", "Coupon", "Affiliate", "Revenue EUR", "Commission EUR", "Payment ID", "Amount orig", "Currency", "Rate EUR/USD")
+    ws.Range("L6").Value = "Summary by coupon / affiliate"
+    ws.Range("L7:Q7").Value = Array("Coupon", "Affiliate", "Sales", "Unique Customers", "Revenue EUR", "Commission EUR")
+End Sub
+
+Private Function GetCommissionRate(ByVal value As Variant) As Double
+    Dim textValue As String
+    textValue = Trim$(CStr(value))
+
+    If textValue = vbNullString Then
+        GetCommissionRate = 0.095
+        Exit Function
+    End If
+
+    Dim hasPercent As Boolean
+    hasPercent = (InStr(1, textValue, "%", vbTextCompare) > 0)
+    textValue = Replace$(textValue, "%", vbNullString)
+
+    Dim parsed As Double
+    If Not TryParseNumber(textValue, parsed) Then
+        Err.Raise vbObjectError + 1910, "GetCommissionRate", "Invalid commission rate. Use 9.5% or 0.095."
+    End If
+
+    If hasPercent Or parsed > 1 Then parsed = parsed / 100
+    If parsed < 0 Then Err.Raise vbObjectError + 1911, "GetCommissionRate", "Commission rate cannot be negative."
+    GetCommissionRate = parsed
+End Function
+
+Private Function MaskCustomer(ByVal customerUID As String, ByVal email As String) As String
+    customerUID = Trim$(customerUID)
+    email = NormalizeEmail(email)
+
+    If customerUID <> vbNullString Then
+        If Len(customerUID) <= 10 Then
+            MaskCustomer = Left$(customerUID, 4) & "..."
+        Else
+            MaskCustomer = Left$(customerUID, 6) & "..." & Right$(customerUID, 4)
+        End If
+        Exit Function
+    End If
+
+    Dim atPos As Long
+    atPos = InStr(1, email, "@", vbTextCompare)
+    If atPos > 1 Then
+        MaskCustomer = Left$(email, Application.Min(2, atPos - 1)) & "***" & Mid$(email, atPos)
+    Else
+        MaskCustomer = "anonymous"
+    End If
+End Function
+
+Private Sub UpdateInfluencerSummary(ByVal summary As Object, _
+                                    ByVal uniqueCustomers As Object, _
+                                    ByVal coupon As String, _
+                                    ByVal affiliateName As String, _
+                                    ByVal customerUID As String, _
+                                    ByVal email As String, _
+                                    ByVal amountEUR As Double, _
+                                    ByVal commissionEUR As Double)
+    Dim summaryKey As String
+    summaryKey = UCase$(Trim$(coupon)) & vbTab & Trim$(affiliateName)
+
+    Dim metrics As Variant
+    If summary.Exists(summaryKey) Then
+        metrics = summary(summaryKey)
+    Else
+        metrics = Array(0&, 0#, 0#)
+    End If
+
+    metrics(0) = CLng(metrics(0)) + 1
+    metrics(1) = CDbl(metrics(1)) + amountEUR
+    metrics(2) = CDbl(metrics(2)) + commissionEUR
+    summary(summaryKey) = metrics
+
+    Dim customerKey As String
+    customerKey = Trim$(customerUID)
+    If customerKey = vbNullString Then customerKey = NormalizeEmail(email)
+    If customerKey <> vbNullString Then uniqueCustomers(summaryKey & vbTab & customerKey) = True
+End Sub
+
+Private Sub WriteInfluencerSummary(ByVal ws As Worksheet, ByVal summary As Object, ByVal uniqueCustomers As Object)
+    Dim rowNumber As Long
+    rowNumber = 8
+
+    Dim key As Variant
+    For Each key In summary.Keys
+        Dim parts() As String
+        parts = Split(CStr(key), vbTab)
+
+        Dim metrics As Variant
+        metrics = summary(key)
+
+        ws.Cells(rowNumber, 12).Value = parts(0)
+        If UBound(parts) >= 1 Then ws.Cells(rowNumber, 13).Value = parts(1)
+        ws.Cells(rowNumber, 14).Value = CLng(metrics(0))
+        ws.Cells(rowNumber, 15).Value = CountUniqueForSummary(uniqueCustomers, CStr(key))
+        ws.Cells(rowNumber, 16).Value = Round(CDbl(metrics(1)), 2)
+        SetNumberFormatSafe ws.Cells(rowNumber, 16), "#,##0.00"
+        ws.Cells(rowNumber, 17).Value = Round(CDbl(metrics(2)), 2)
+        SetNumberFormatSafe ws.Cells(rowNumber, 17), "#,##0.00"
+        rowNumber = rowNumber + 1
+    Next key
+End Sub
+
+Private Function CountUniqueForSummary(ByVal uniqueCustomers As Object, ByVal summaryKey As String) As Long
+    Dim key As Variant
+    Dim prefix As String
+    prefix = summaryKey & vbTab
+
+    For Each key In uniqueCustomers.Keys
+        If Left$(CStr(key), Len(prefix)) = prefix Then CountUniqueForSummary = CountUniqueForSummary + 1
+    Next key
 End Function
 
 Private Sub SetNumberFormatSafe(ByVal targetRange As Range, ByVal formatCode As String)

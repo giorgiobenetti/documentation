@@ -126,6 +126,27 @@ Per ogni referral importato il modulo invia:
 
 Questo consente a FirstPromoter di associare il cliente storico al promoter senza creare commissioni passate. I rinnovi futuri dovranno arrivare a FirstPromoter con lo stesso `uid`.
 
+
+## Report influencer interno
+
+Dato che FirstPromoter consiglia di non importare vendite/commissioni storiche, il modulo include `GenerateInfluencerReport` per produrre un report interno da inviare o usare per riconciliare gli influencer.
+
+Il foglio viene creato automaticamente come `Influencer_Report` e usa questi input:
+
+| Cella | Uso |
+| --- | --- |
+| `B2` | Data inizio calcolo |
+| `D2` | Data fine calcolo, opzionale; se vuota usa oggi |
+| `B3` | Lista coupon separati da virgola; se vuota usa tutti i coupon mappati |
+| `B4` | Percentuale commissione, default `9.5%` |
+
+La macro legge `Payments` e `Coupon_Map`, esclude refund/dispute, converte USD in EUR con `Exchange_Rates`, anonimizza i clienti e genera:
+
+- dettaglio transazioni: cliente anonimo, coupon, affiliate, fatturato EUR, commissione EUR, payment id, valuta e tasso;
+- riepilogo per coupon/affiliate: numero vendite, clienti unici, fatturato EUR, commissione EUR.
+
+La commissione calcolata e solo reportistica: non crea commissioni o payout in FirstPromoter.
+
 ## Layout atteso
 
 ### `Payments`
@@ -142,7 +163,7 @@ Il modulo cerca le intestazioni nelle prime 10 righe. Se non le trova, usa il la
 | F | `Refunded date UTC` |
 | G | `Customer Email` |
 | H | `Dispute Date UTC` |
-| opzionale | `Customer ID`, `Customer`, oppure `Stripe Customer ID` per inviare `uid` a FirstPromoter |
+| I/opzionale | `Customer ID`, `Customer`, oppure `Stripe Customer ID` per inviare `uid` a FirstPromoter e alimentare il report |
 
 ### `Filter_Output`
 
