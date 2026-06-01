@@ -10,14 +10,16 @@ Private Declare Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 #End If
 
 ' API key selection:
-' - v2: use the regular API key here and set FP_ACCOUNT_ID.
-' - v1 legacy: use the Legacy API key here and leave FP_ACCOUNT_ID empty.
+' - v2: use the regular API key in FP_API_KEY, set FP_ACCOUNT_ID, and set FP_LEGACY_API_KEY for customer_since backdating.
+' - v1 legacy: use the Legacy API key in FP_API_KEY and leave FP_ACCOUNT_ID empty.
 Private Const FP_API_KEY As String = ""
+Private Const FP_LEGACY_API_KEY As String = ""
 ' FirstPromoter v2 requires Account-ID. Leave empty to use legacy v1.
 Private Const FP_ACCOUNT_ID As String = ""
 Private Const FP_TRACK_URL_V1 As String = "https://firstpromoter.com/api/v1/track/sale"
 Private Const FP_TRACK_URL_V2 As String = "https://api.firstpromoter.com/api/v2/track/sale"
 Private Const FP_SIGNUP_URL_V2 As String = "https://api.firstpromoter.com/api/v2/track/signup"
+Private Const FP_LEAD_UPDATE_URL_V1 As String = "https://firstpromoter.com/api/v1/leads/update"
 Private Const ECB_URL As String = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?format=csvdata&startPeriod=2023-05-01"
 
 Private Const SHEET_EXCHANGE_RATES As String = "Exchange_Rates"
@@ -714,12 +716,24 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
         Call PostFirstPromoterJson(FP_SIGNUP_URL_V2, signupPayload, apiKey, signupStatus, signupResponse)
         If signupStatus <> 200 And signupStatus <> 422 Then
             fpStatus = signupStatus
-            fpResponse = "Signup failed: " & signupResponse & " | Signup payload: " & signupPayload
+            fpResponse = "Signup failed; sale not sent: " & signupResponse & " | Signup payload: " & signupPayload
+            Exit Sub
+        End If
+
+        Dim customerSinceStatus As Long
+        Dim customerSinceResponse As String
+        Call UpdateFirstPromoterCustomerSince(payDate, custEmail, coupon, customerUID, customerSinceStatus, customerSinceResponse)
+        If customerSinceStatus <> 200 Then
+            fpStatus = customerSinceStatus
+            fpResponse = "customer_since backdate failed; sale not sent. Signup HTTP " & CStr(signupStatus) & _
+                ": " & Left$(signupResponse, 160) & " | customer_since response: " & customerSinceResponse
             Exit Sub
         End If
 
         Call PostFirstPromoterJson(FP_TRACK_URL_V2, requestPayload, apiKey, fpStatus, fpResponse)
-        fpResponse = "Signup HTTP " & CStr(signupStatus) & ": " & Left$(signupResponse, 200) & " | Sale: " & fpResponse
+        fpResponse = "Signup HTTP " & CStr(signupStatus) & ": " & Left$(signupResponse, 120) & _
+            " | customer_since HTTP " & CStr(customerSinceStatus) & ": " & Left$(customerSinceResponse, 120) & _
+            " | Sale: " & fpResponse
     Else
         http.Open "POST", FP_TRACK_URL_V1 & "?" & requestPayload, False
         http.setRequestHeader "Accept", "application/json"
@@ -735,6 +749,51 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
 RequestFailed:
     fpStatus = 0
     fpResponse = "VBA HTTP error " & Err.Number & ": " & Err.Description
+End Sub
+
+Private Sub UpdateFirstPromoterCustomerSince(ByVal customerSinceDate As Date, _
+                                             ByVal custEmail As String, _
+                                             ByVal coupon As String, _
+                                             ByVal customerUID As String, _
+                                             ByRef fpStatus As Long, _
+                                             ByRef fpResponse As String)
+    On Error GoTo RequestFailed
+
+    Dim legacyApiKey As String
+    legacyApiKey = Trim$(FP_LEGACY_API_KEY)
+    If legacyApiKey = vbNullString Then
+        fpStatus = 0
+        fpResponse = "Missing FP_LEGACY_API_KEY. Sale was not sent because customer_since cannot be backdated safely."
+        Exit Sub
+    End If
+
+    Dim queryString As String
+    If Trim$(customerUID) <> vbNullString Then
+        queryString = "uid=" & UrlEncode(Trim$(customerUID))
+    Else
+        queryString = "email=" & UrlEncode(NormalizeEmail(custEmail))
+    End If
+
+    queryString = queryString & _
+        "&state=active" & _
+        "&customer_since=" & UrlEncode(Format$(customerSinceDate, "yyyy-mm-dd\Thh:nn:ss\Z"))
+
+    Dim http As Object
+    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    http.setTimeouts 5000, 10000, 30000, 30000
+    http.Open "PUT", FP_LEAD_UPDATE_URL_V1 & "?" & queryString, False
+    http.setRequestHeader "Accept", "application/json"
+    http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
+    http.setRequestHeader "X-API-KEY", legacyApiKey
+    http.Send vbNullString
+
+    fpStatus = CLng(http.Status)
+    fpResponse = Left$(CStr(http.responseText), 500)
+    Exit Sub
+
+RequestFailed:
+    fpStatus = 0
+    fpResponse = "VBA HTTP error while updating customer_since " & Err.Number & ": " & Err.Description
 End Sub
 
 Private Sub PostFirstPromoterJson(ByVal url As String, _

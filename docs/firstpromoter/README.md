@@ -15,8 +15,8 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 3. Rimuovi o rinomina il vecchio modulo `FP_Import_Tool`.
 4. Usa `File > Import File...` e importa `FP_Import_Tool.bas`. In alternativa, puoi copiare/incollare il contenuto in un modulo standard; in questo caso il file fornito non contiene righe `Attribute`, che in VBE causano errore di sintassi se incollate manualmente.
 5. Imposta la costante `FP_API_KEY` nel modulo usando la chiave corretta per la modalita API scelta.
-   - API v2: usa la `API key` normale e imposta anche `FP_ACCOUNT_ID`.
-   - API v1 legacy: usa la `Legacy API key` e lascia `FP_ACCOUNT_ID` vuoto.
+   - API v2: usa la `API key` normale, imposta `FP_ACCOUNT_ID` e imposta anche `FP_LEGACY_API_KEY` per poter correggere `customer_since` prima di creare la sale.
+   - API v1 legacy: usa la `Legacy API key` in `FP_API_KEY` e lascia `FP_ACCOUNT_ID` vuoto.
 6. Se il tuo account e FirstPromoter v2, imposta `FP_ACCOUNT_ID`; se resta vuota, il modulo usa la API legacy v1.
 
 ## Correzioni incluse
@@ -25,7 +25,7 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 - Parser CSV BCE basato sulle intestazioni `TIME_PERIOD` e `OBS_VALUE`, con supporto per campi quotati.
 - Conversione EUR/USD coerente con il tasso BCE `USD per 1 EUR`: importi USD convertiti in EUR con `amount / rate`; importi EUR lasciati invariati.
 - Filtri indipendenti per `Already Paid` e `To Be Paid`, con righe verdi per pagati e gialle per da pagare.
-- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe e colonna Coupon inviata sia come `promo_code` sia come `ref_id` per attribuire la vendita al promoter. Se disponibile, lo Stripe Customer ID viene inviato come `uid`. In API v2 il modulo crea prima il lead via `/track/signup` con `created_at` storico e poi registra la sale.
+- Invio FirstPromoter con importo in centesimi, `event_id` uguale all'id pagamento Stripe e colonna Coupon inviata sia come `promo_code` sia come `ref_id` per attribuire la vendita al promoter. Se disponibile, lo Stripe Customer ID viene inviato come `uid`. In API v2 il modulo crea prima il lead via `/track/signup`, forza `customer_since` storico via `/api/v1/leads/update`, e registra la sale solo se questo backdate riesce.
 
 ## Troubleshooting invio FirstPromoter
 
@@ -36,7 +36,7 @@ La documentazione FirstPromoter e divisa in due flussi:
 - v1: `POST https://firstpromoter.com/api/v1/track/sale`, parametri in query string, header `X-API-KEY`, risposta `204` quando non viene trovata una referral sale.
 - v2: `POST https://api.firstpromoter.com/api/v2/track/sale`, JSON body, header `Authorization: Bearer <API key>` e `Account-ID`, risposta `404` quando referral/promoter non vengono trovati.
 
-Se stai usando la UI FirstPromoter v2 e la sezione Tracking Coupons, imposta `FP_ACCOUNT_ID` con l'Account ID indicato in Settings > Integrations e usa la `API key` normale, non la `Legacy API key`. Questo forza il modulo a usare la API v2.
+Se stai usando la UI FirstPromoter v2 e la sezione Tracking Coupons, imposta `FP_ACCOUNT_ID` con l'Account ID indicato in Settings > Integrations e usa la `API key` normale in `FP_API_KEY`. Imposta inoltre `FP_LEGACY_API_KEY` con la Legacy API key: serve solo per chiamare `PUT /api/v1/leads/update` e backdatare `customer_since`. Questo forza il modulo a usare la API v2 in modo sicuro.
 
 ### Verifica locale senza inviare
 
@@ -82,19 +82,15 @@ In quel caso controlla:
 
 ### Date storiche e `uid`
 
-Per API v2 il modulo invia prima una signup storica:
+Per API v2 il modulo ora usa un flusso protetto:
 
-```json
-{
-  "email": "cliente@example.com",
-  "uid": "cus_...",
-  "ref_id": "GO20",
-  "created_at": "2026-05-10T00:00:00Z",
-  "skip_email_notification": true
-}
-```
+1. invia una signup storica con `created_at`, `uid` e `ref_id`;
+2. chiama `PUT https://firstpromoter.com/api/v1/leads/update` con la `FP_LEGACY_API_KEY` per impostare `customer_since` alla data storica;
+3. invia la sale solo se il backdate di `customer_since` ha successo.
 
-Poi invia la sale. Questo evita che i nuovi lead/customer importati vengano creati con data odierna. Se un lead/customer e gia stato creato da un test precedente con data odierna, FirstPromoter potrebbe non aggiornare quella data: in quel caso va corretto/eliminato lato FirstPromoter prima di reimportare.
+Questo evita di creare commissioni pagabili quando FirstPromoter terrebbe `Customer Since` alla data odierna. Se `FP_LEGACY_API_KEY` manca o l'update `customer_since` fallisce, la sale non viene inviata e la riga va in errore nel log.
+
+Se un lead/customer e gia stato creato da un test precedente con `Customer Since` odierno, esegui il nuovo flusso su una riga di test e verifica nel log che l'update `customer_since` risponda `200`. Se FirstPromoter non aggiorna quel record, va corretto/eliminato lato FirstPromoter prima di reimportare.
 
 ## Layout atteso
 
