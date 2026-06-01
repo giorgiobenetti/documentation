@@ -88,9 +88,14 @@ In quel caso controlla:
 - `Already Paid`: riga storica gia pagata, verde;
 - `To Be Paid`: riga ancora da pagare, gialla.
 
-Per evitare payout duplicati, `SendToFirstPromoter` invia **solo** le righe con stato `To Be Paid`. Le righe `Already Paid` vengono saltate, marcate `Skipped Paid` in colonna K e loggate in `FP_Import_Log`; non viene creata nessuna nuova commissione pagabile.
+`SendToFirstPromoter` importa entrambe le categorie, ma con due trattamenti diversi:
 
-Inoltre i due intervalli data `Already Paid` e `To Be Paid` non possono sovrapporsi: se si intersecano, `GenerateOutput` si ferma con errore. Solo impostando esplicitamente `FP_SEND_ALREADY_PAID = True` nel codice si abilita l'invio delle righe gia pagate, ma e sconsigliato per import storici gia liquidati.
+- `To Be Paid`: crea una sale/commissione normale, quindi resta pagabile in FirstPromoter.
+- `Already Paid`: crea o ritrova la sale/commissione, poi tenta subito di marcarla `is_paid=true` tramite API commissioni v2. Se il mark-paid fallisce, l'import si ferma per evitare di lasciare commissioni storiche pagabili.
+
+Inoltre i due intervalli data `Already Paid` e `To Be Paid` non possono sovrapporsi: se si intersecano, `GenerateOutput` si ferma con errore.
+
+Per importare correttamente gli `Already Paid` serve la modalita v2 (`FP_API_KEY` + `FP_ACCOUNT_ID`) per recuperare/aggiornare la commissione. Il log deve mostrare `Paid Imported` in colonna K e una risposta di mark-paid riuscita.
 
 ### Date storiche e `uid`
 
@@ -127,4 +132,4 @@ Il modulo cerca le intestazioni nelle prime 10 righe. Se non le trova, usa il la
 - `B4`: lista coupon separati da virgola, punto e virgola o nuova riga.
 - `B5:D5`: intervallo `Already Paid`.
 - `B6:D6`: intervallo `To Be Paid`.
-- Output dalla riga 11, colonne `A:L`; la colonna `K` viene usata come stato importazione (`No`, `Yes`, `Error`, `No Referral`, `Duplicate`); la colonna `L` contiene lo Stripe Customer ID / `uid` quando disponibile.
+- Output dalla riga 11, colonne `A:L`; la colonna `K` viene usata come stato importazione (`No`, `Yes`, `Paid Imported`, `Paid Mark Error`, `Error`, `No Referral`, `Duplicate`); la colonna `L` contiene lo Stripe Customer ID / `uid` quando disponibile.

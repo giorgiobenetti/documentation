@@ -16,12 +16,13 @@ Private Const FP_API_KEY As String = ""
 Private Const FP_LEGACY_API_KEY As String = ""
 ' FirstPromoter v2 requires Account-ID. Leave empty to use legacy v1.
 Private Const FP_ACCOUNT_ID As String = ""
-' Safety: historical paid rows must not create new payable commissions by default.
-Private Const FP_SEND_ALREADY_PAID As Boolean = False
+' Already Paid rows are imported, then immediately marked paid. If mark-paid fails, import stops.
+Private Const FP_IMPORT_ALREADY_PAID As Boolean = True
 Private Const FP_TRACK_URL_V1 As String = "https://firstpromoter.com/api/v1/track/sale"
 Private Const FP_TRACK_URL_V2 As String = "https://api.firstpromoter.com/api/v2/track/sale"
 Private Const FP_SIGNUP_URL_V2 As String = "https://api.firstpromoter.com/api/v2/track/signup"
 Private Const FP_LEAD_UPDATE_URL_V1 As String = "https://firstpromoter.com/api/v1/leads/update"
+Private Const FP_COMMISSIONS_URL_V2 As String = "https://api.firstpromoter.com/api/v2/company/commissions"
 Private Const ECB_URL As String = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?format=csvdata&startPeriod=2023-05-01"
 
 Private Const SHEET_EXCHANGE_RATES As String = "Exchange_Rates"
@@ -390,11 +391,13 @@ Public Sub SendToFirstPromoter()
 
     Dim i As Long
     Dim successCount As Long
+    Dim paidImportedCount As Long
     Dim noReferralCount As Long
     Dim duplicateCount As Long
     Dim errorCount As Long
     Dim skippedCount As Long
     successCount = 0
+    paidImportedCount = 0
     noReferralCount = 0
     duplicateCount = 0
     errorCount = 0
@@ -436,7 +439,7 @@ Public Sub SendToFirstPromoter()
 
         Dim importState As String
         importState = UCase$(Trim$(CStr(wsO.Cells(i, 11).Value)))
-        If importState = "YES" Or Left$(importState, 7) = "SKIPPED" Then
+        If importState = "YES" Or importState = "PAID IMPORTED" Or Left$(importState, 7) = "SKIPPED" Then
             skippedCount = skippedCount + 1
             GoTo RowComplete
         End If
@@ -468,20 +471,15 @@ Public Sub SendToFirstPromoter()
             Err.Raise vbObjectError + 1705, "SendToFirstPromoter", "EUR amount must be greater than zero."
         End If
 
-        If Not ShouldSendPayoutStatus(payoutStatus) Then
-            stage = "Skip non-payable row"
+        If Not IsImportablePayoutStatus(payoutStatus) Then
+            stage = "Skip row with unknown payout status"
             fpStatus = 0
             resultLabel = "Skipped - " & IIf(payoutStatus = vbNullString, "missing payout status", payoutStatus)
-            fpResponse = "Not sent to FirstPromoter. Only rows with status 'To Be Paid' are sent by default. " & _
-                "Row status is '" & payoutStatus & "'. Set FP_SEND_ALREADY_PAID=True only if you intentionally want to create commissions for already-paid historical rows."
+            fpResponse = "Not sent to FirstPromoter. Column J must be 'Already Paid' or 'To Be Paid'. Row status is '" & payoutStatus & "'."
             requestPayload = vbNullString
             WriteFirstPromoterLog wsLog, logRow, i, stage, payID, coupon, amountEUR, fpStatus, resultLabel, fpResponse, requestPayload
             logRow = logRow + 1
-            If UCase$(payoutStatus) = "ALREADY PAID" Then
-                SetImportStatusSafe wsO, i, "Skipped Paid", RGB(212, 237, 218)
-            Else
-                SetImportStatusSafe wsO, i, "Skipped", RGB(255, 243, 205)
-            End If
+            SetImportStatusSafe wsO, i, "Skipped", RGB(255, 243, 205)
             skippedCount = skippedCount + 1
             GoTo RowComplete
         End If
@@ -491,7 +489,13 @@ Public Sub SendToFirstPromoter()
 
         stage = "HTTP request to FirstPromoter"
         Call PostFirstPromoterSale(requestPayload, apiKey, payDate, custEmail, coupon, customerUID, fpStatus, fpResponse)
-        resultLabel = FirstPromoterResultLabel(fpStatus)
+
+        If IsAlreadyPaidPayoutStatus(payoutStatus) Then
+            stage = "Mark historical commission paid"
+            Call MarkHistoricalCommissionPaid(payID, apiKey, fpStatus, fpResponse, resultLabel)
+        Else
+            resultLabel = FirstPromoterResultLabel(fpStatus)
+        End If
 
         stage = "Write FirstPromoter log"
         WriteFirstPromoterLog wsLog, logRow, i, stage, payID, coupon, amountEUR, fpStatus, resultLabel, fpResponse, requestPayload
@@ -500,8 +504,13 @@ Public Sub SendToFirstPromoter()
         stage = "Update Filter_Output status"
         Select Case fpStatus
             Case 200
-                SetImportStatusSafe wsO, i, "Yes", RGB(212, 237, 218)
-                successCount = successCount + 1
+                If IsAlreadyPaidPayoutStatus(payoutStatus) Then
+                    SetImportStatusSafe wsO, i, "Paid Imported", RGB(212, 237, 218)
+                    paidImportedCount = paidImportedCount + 1
+                Else
+                    SetImportStatusSafe wsO, i, "Yes", RGB(212, 237, 218)
+                    successCount = successCount + 1
+                End If
             Case 204, 404
                 SetImportStatusSafe wsO, i, "No Referral", RGB(255, 243, 205)
                 noReferralCount = noReferralCount + 1
@@ -509,8 +518,18 @@ Public Sub SendToFirstPromoter()
                 SetImportStatusSafe wsO, i, "Duplicate", RGB(255, 243, 205)
                 duplicateCount = duplicateCount + 1
             Case Else
-                SetImportStatusSafe wsO, i, "Error", RGB(248, 215, 218)
-                errorCount = errorCount + 1
+                If IsAlreadyPaidPayoutStatus(payoutStatus) Then
+                    SetImportStatusSafe wsO, i, "Paid Mark Error", RGB(248, 215, 218)
+                    errorCount = errorCount + 1
+                    MsgBox "Import stopped: an Already Paid row was imported or found, but could not be marked paid." & vbCrLf & _
+                           "Filter_Output row: " & i & vbCrLf & _
+                           "Payment ID: " & payID & vbCrLf & _
+                           "Check the log before continuing.", vbCritical
+                    Exit Sub
+                Else
+                    SetImportStatusSafe wsO, i, "Error", RGB(248, 215, 218)
+                    errorCount = errorCount + 1
+                End If
         End Select
 
         SleepMs 300
@@ -549,7 +568,8 @@ RowComplete:
     Next i
 
     MsgBox "Import complete." & vbCrLf & _
-           "Tracked sales: " & successCount & vbCrLf & _
+           "To Be Paid tracked: " & successCount & vbCrLf & _
+           "Already Paid imported + marked paid: " & paidImportedCount & vbCrLf & _
            "No referral (204/404): " & noReferralCount & vbCrLf & _
            "Duplicates (409): " & duplicateCount & vbCrLf & _
            "Errors: " & errorCount & vbCrLf & _
@@ -753,15 +773,145 @@ CleanFail:
            "Error " & Err.Number & ": " & Err.Description, vbCritical
 End Sub
 
-Private Function ShouldSendPayoutStatus(ByVal payoutStatus As String) As Boolean
+Private Function IsImportablePayoutStatus(ByVal payoutStatus As String) As Boolean
     Select Case UCase$(Trim$(payoutStatus))
         Case "TO BE PAID"
-            ShouldSendPayoutStatus = True
+            IsImportablePayoutStatus = True
         Case "ALREADY PAID"
-            ShouldSendPayoutStatus = FP_SEND_ALREADY_PAID
+            IsImportablePayoutStatus = FP_IMPORT_ALREADY_PAID
         Case Else
-            ShouldSendPayoutStatus = False
+            IsImportablePayoutStatus = False
     End Select
+End Function
+
+Private Function IsAlreadyPaidPayoutStatus(ByVal payoutStatus As String) As Boolean
+    IsAlreadyPaidPayoutStatus = (UCase$(Trim$(payoutStatus)) = "ALREADY PAID")
+End Function
+
+Private Sub MarkHistoricalCommissionPaid(ByVal eventID As String, _
+                                         ByVal apiKey As String, _
+                                         ByRef fpStatus As Long, _
+                                         ByRef fpResponse As String, _
+                                         ByRef resultLabel As String)
+    If Not IsFirstPromoterV2() Then
+        fpStatus = 0
+        resultLabel = "Already Paid requires v2 commission API"
+        fpResponse = fpResponse & " | Cannot mark paid without FP_ACCOUNT_ID / v2 API."
+        Exit Sub
+    End If
+
+    If fpStatus <> 200 And fpStatus <> 409 Then
+        resultLabel = "Sale failed before mark-paid"
+        Exit Sub
+    End If
+
+    Dim saleResponse As String
+    saleResponse = fpResponse
+
+    Dim findStatus As Long
+    Dim findResponse As String
+    Dim commissionID As String
+    Call FindFirstPromoterCommissionID(eventID, apiKey, findStatus, findResponse, commissionID)
+
+    If findStatus <> 200 Or commissionID = vbNullString Then
+        fpStatus = 0
+        resultLabel = "MARK PAID FAILED - commission not found"
+        fpResponse = "Sale HTTP " & CStr(fpStatus) & ": " & Left$(saleResponse, 180) & _
+            " | Find commission HTTP " & CStr(findStatus) & ": " & Left$(findResponse, 300)
+        Exit Sub
+    End If
+
+    Dim markStatus As Long
+    Dim markResponse As String
+    Call MarkFirstPromoterCommissionPaid(commissionID, apiKey, markStatus, markResponse)
+
+    If markStatus = 200 Then
+        fpStatus = 200
+        resultLabel = "Historical sale imported and marked paid"
+        fpResponse = "Sale: " & Left$(saleResponse, 180) & _
+            " | Commission ID " & commissionID & " marked paid: " & Left$(markResponse, 300)
+    Else
+        fpStatus = 0
+        resultLabel = "MARK PAID FAILED - commission remains payable"
+        fpResponse = "Sale: " & Left$(saleResponse, 160) & _
+            " | Commission ID " & commissionID & " mark paid HTTP " & CStr(markStatus) & ": " & Left$(markResponse, 300)
+    End If
+End Sub
+
+Private Sub FindFirstPromoterCommissionID(ByVal eventID As String, _
+                                          ByVal apiKey As String, _
+                                          ByRef fpStatus As Long, _
+                                          ByRef fpResponse As String, _
+                                          ByRef commissionID As String)
+    On Error GoTo RequestFailed
+
+    Dim http As Object
+    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    http.setTimeouts 5000, 10000, 30000, 30000
+    http.Open "GET", FP_COMMISSIONS_URL_V2 & "?q=" & UrlEncode(eventID), False
+    http.setRequestHeader "Accept", "application/json"
+    http.setRequestHeader "Authorization", "Bearer " & apiKey
+    http.setRequestHeader "Account-ID", Trim$(FP_ACCOUNT_ID)
+    http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
+    http.Send vbNullString
+
+    fpStatus = CLng(http.Status)
+    fpResponse = Left$(CStr(http.responseText), 1000)
+    If fpStatus = 200 Then commissionID = ExtractFirstJsonNumberByKey(fpResponse, "id")
+    Exit Sub
+
+RequestFailed:
+    fpStatus = 0
+    fpResponse = "VBA HTTP error while finding commission " & Err.Number & ": " & Err.Description
+End Sub
+
+Private Sub MarkFirstPromoterCommissionPaid(ByVal commissionID As String, _
+                                            ByVal apiKey As String, _
+                                            ByRef fpStatus As Long, _
+                                            ByRef fpResponse As String)
+    On Error GoTo RequestFailed
+
+    Dim http As Object
+    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    http.setTimeouts 5000, 10000, 30000, 30000
+    http.Open "PUT", FP_COMMISSIONS_URL_V2 & "/" & commissionID, False
+    http.setRequestHeader "Content-Type", "application/json"
+    http.setRequestHeader "Accept", "application/json"
+    http.setRequestHeader "Authorization", "Bearer " & apiKey
+    http.setRequestHeader "Account-ID", Trim$(FP_ACCOUNT_ID)
+    http.setRequestHeader "User-Agent", "Excel VBA FirstPromoter Import Tool"
+    http.Send "{" & JsonString("is_paid") & ":true," & _
+        JsonString("internal_note") & ":" & JsonString("Historical import - already paid before FirstPromoter migration") & "}"
+
+    fpStatus = CLng(http.Status)
+    fpResponse = Left$(CStr(http.responseText), 500)
+    Exit Sub
+
+RequestFailed:
+    fpStatus = 0
+    fpResponse = "VBA HTTP error while marking commission paid " & Err.Number & ": " & Err.Description
+End Sub
+
+Private Function ExtractFirstJsonNumberByKey(ByVal jsonText As String, ByVal keyName As String) As String
+    Dim keyPattern As String
+    keyPattern = Chr$(34) & keyName & Chr$(34) & ":"
+
+    Dim pos As Long
+    pos = InStr(1, jsonText, keyPattern, vbTextCompare)
+    If pos = 0 Then Exit Function
+
+    pos = pos + Len(keyPattern)
+    Do While pos <= Len(jsonText) And Mid$(jsonText, pos, 1) = " "
+        pos = pos + 1
+    Loop
+
+    Dim startPos As Long
+    startPos = pos
+    Do While pos <= Len(jsonText) And Mid$(jsonText, pos, 1) Like "[0-9]"
+        pos = pos + 1
+    Loop
+
+    If pos > startPos Then ExtractFirstJsonNumberByKey = Mid$(jsonText, startPos, pos - startPos)
 End Function
 
 Private Function FirstPromoterResultLabel(ByVal fpStatus As Long) As String
