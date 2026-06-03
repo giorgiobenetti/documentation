@@ -47,6 +47,71 @@ Function IsMT4(channelVal As String) As Boolean
     IsMT4 = (InStr(1, Trim$(channelVal), "MT4", vbTextCompare) > 0)
 End Function
 
+Private Const CASH_SUMMARY_MARKER As String = "RIASSUNTO"
+
+Private Sub RimuoviRiassuntoCashMovements(ws As Worksheet)
+    Dim r As Long
+    For r = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row To 2 Step -1
+        If Trim$(CStr(ws.Cells(r, 1).Value)) = CASH_SUMMARY_MARKER Then
+            ws.Range(ws.Cells(r, 1), ws.Cells(ws.Rows.Count, 9)).Clear
+            Exit Sub
+        End If
+    Next r
+End Sub
+
+Private Sub ScriviRiassuntoCashMovements(ws As Worksheet, ByVal lastDataRow As Long)
+    If lastDataRow < 2 Then Exit Sub
+    Dim data As Variant
+    data = ws.Range(ws.Cells(2, 1), ws.Cells(lastDataRow, 9)).Value2
+    Dim totVers As Double, totPrel As Double
+    Dim nVers As Long, nPrel As Long
+    Dim i As Long, tipo As String, amt As Double
+    For i = 1 To UBound(data, 1)
+        tipo = Trim$(CStr(data(i, 4)))
+        amt = CDbl(SafeVal(data(i, 8)))
+        Select Case tipo
+            Case "Cash In"
+                totVers = totVers + amt
+                nVers = nVers + 1
+            Case "Cash Out"
+                totPrel = totPrel + amt
+                nPrel = nPrel + 1
+        End Select
+    Next i
+    Dim saldo As Double
+    saldo = totVers + totPrel
+    Dim r0 As Long
+    r0 = lastDataRow + 2
+    ws.Cells(r0, 1).Value = CASH_SUMMARY_MARKER
+    ws.Cells(r0, 1).Font.Bold = True
+    r0 = r0 + 1
+    ws.Cells(r0, 1).Value = "Totale versamenti"
+    ws.Cells(r0, 8).Value = totVers
+    ws.Cells(r0, 9).Value = totVers
+    r0 = r0 + 1
+    ws.Cells(r0, 1).Value = "Totale prelievi"
+    ws.Cells(r0, 8).Value = Abs(totPrel)
+    ws.Cells(r0, 9).Value = Abs(totPrel)
+    r0 = r0 + 1
+    ws.Cells(r0, 1).Value = "N° versamenti"
+    ws.Cells(r0, 8).Value = nVers
+    r0 = r0 + 1
+    ws.Cells(r0, 1).Value = "N° prelievi"
+    ws.Cells(r0, 8).Value = nPrel
+    r0 = r0 + 1
+    ws.Cells(r0, 1).Value = "Saldo (versamenti - prelievi)"
+    ws.Cells(r0, 8).Value = saldo
+    ws.Cells(r0, 9).Value = saldo
+    Dim rStart As Long
+    rStart = lastDataRow + 3
+    ws.Range(ws.Cells(rStart + 1, 8), ws.Cells(rStart + 2, 9)).NumberFormat = "[$€-410]#,##0.00"
+    ws.Range(ws.Cells(rStart + 1, 9), ws.Cells(rStart + 2, 9)).NumberFormat = "[$-409]0.00"
+    ws.Range(ws.Cells(rStart + 3, 8), ws.Cells(rStart + 4, 8)).NumberFormat = "0"
+    ws.Range(ws.Cells(rStart + 5, 8), ws.Cells(rStart + 5, 9)).NumberFormat = "[$€-410]#,##0.00"
+    ws.Cells(rStart + 5, 9).NumberFormat = "[$-409]0.00"
+    ws.Range(ws.Cells(rStart, 1), ws.Cells(rStart + 5, 1)).Font.Bold = True
+End Sub
+
 Private Function GetRateCached(ByVal ccy As String, wsFX As Worksheet, ByVal tDate As Date, ByRef dct As Object) As Double
     Dim ky As String
     ky = UCase$(Trim$(ccy)) & "|" & Format$(tDate, "yyyymmdd")
@@ -112,6 +177,7 @@ Sub AggiornaCashMovements()
     wsCash.Cells(1, 8).Value = "Profit/Loss"
     wsCash.Cells(1, 9).Value = "GSheet"
     wsCash.Rows(1).Font.Bold = True
+    RimuoviRiassuntoCashMovements wsCash
     Dim dictChiavi As Object: Set dictChiavi = CreateObject("Scripting.Dictionary")
     Dim lastRowCash As Long: lastRowCash = wsCash.Cells(wsCash.Rows.Count, 1).End(xlUp).Row
     If lastRowCash > 1 Then
@@ -186,6 +252,7 @@ NextL:
     If lastRowCash > 2 Then
         wsCash.Range("A1:I" & lastRowCash).Sort Key1:=wsCash.Range("A2"), Order1:=xlAscending, Header:=xlYes
     End If
+    ScriviRiassuntoCashMovements wsCash, lastRowCash
     wsCash.Columns.AutoFit
     Application.ScreenUpdating = True
     MsgBox "Cash Movements aggiornato!" & vbCrLf & "Righe aggiunte: " & cnt & vbCrLf & "Duplicati ignorati: " & dupes, vbInformation
