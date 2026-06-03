@@ -42,7 +42,19 @@ Private Const CM_META_VALUE As Integer = 12
 
 Function IsCashMovement(summaryVal As String) As Boolean
     Dim s As String: s = LCase$(Trim$(summaryVal))
-    IsCashMovement = (InStr(s, "cash") > 0 Or InStr(s, "internal") > 0 Or InStr(s, "inter account") > 0)
+    IsCashMovement = (InStr(s, "cash") > 0 Or InStr(s, "internal") > 0 Or InStr(s, "inter account") > 0 Or InStr(s, "transfer") > 0)
+End Function
+
+Private Function RigaLedgerECash(summaryVal As String, txnType As String, descVal As String) As Boolean
+    If IsCashMovement(summaryVal) Then
+        RigaLedgerECash = True
+        Exit Function
+    End If
+    Dim t As String: t = UCase$(Trim$(txnType))
+    If t = "DEPO" Or t = "WITH" Then
+        Dim s As String: s = LCase$(Trim$(summaryVal & " " & descVal))
+        RigaLedgerECash = (InStr(s, "cash") > 0 Or InStr(s, "transfer") > 0 Or InStr(s, "internal") > 0 Or InStr(s, "inter account") > 0)
+    End If
 End Function
 
 Function TipoCashMovement(summaryVal As String, importo As Double, Optional txnType As String = "") As String
@@ -96,83 +108,33 @@ Private Type LedgerMap
     Valid As Boolean
 End Type
 
-Private Function LedgerHeaderLooksValid(ws As Worksheet) As Boolean
-    Dim h7 As String
-    h7 = LCase$(Trim$(CStr(ws.Cells(1, LH_SUMMARY).Value)))
-    LedgerHeaderLooksValid = (InStr(h7, "summary") > 0 Or InStr(h7, "market") > 0)
-End Function
-
-Private Function ResolveLedgerMap(ws As Worksheet) As LedgerMap
+Private Function IgLedgerMap() As LedgerMap
     Dim m As LedgerMap
-    If Not LedgerHeaderLooksValid(ws) Then
-        m.Time = LH_TIME
-        m.AccountId = LH_ACCOUNT_ID
-        m.Name = LH_NAME
-        m.TxnType = 4
-        m.TransRef = LH_TRANS_REF
-        m.Summary = LH_SUMMARY
-        m.Description = LH_DESCRIPTION
-        m.Ccy = LH_CCY
-        m.Pnl = LH_PNL
-        m.Valid = True
-        ResolveLedgerMap = m
-        Exit Function
-    End If
-    Dim lastCol As Long, c As Long
-    lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
-    For c = 1 To lastCol
-        Dim h As String
-        h = LCase$(Trim$(CStr(ws.Cells(1, c).Value)))
-        Select Case True
-            Case (InStr(h, "date") > 0 Or h = "time") And m.Time = 0: m.Time = c
-            Case (h = "account" Or h = "account id" Or h = "accountid") And m.AccountId = 0: m.AccountId = c
-            Case (InStr(h, "name") > 0) And m.Name = 0: m.Name = c
-            Case (InStr(h, "reference") > 0 Or h = "ref") And m.TransRef = 0: m.TransRef = c
-            Case h = "summary" And m.Summary = 0: m.Summary = c
-            Case h = "description" And m.Description = 0: m.Description = c
-            Case (h = "currency" Or h = "ccy") And m.Ccy = 0: m.Ccy = c
-            Case (InStr(h, "profit") > 0 Or InStr(h, "loss") > 0 Or h = "amount") And m.Pnl = 0: m.Pnl = c
-            Case (InStr(h, "transaction") > 0 And InStr(h, "type") > 0) And m.TxnType = 0: m.TxnType = c
-        End Select
-    Next c
-    If m.Time = 0 Then m.Time = LH_TIME
-    If m.AccountId = 0 Then m.AccountId = LH_ACCOUNT_ID
-    If m.Name = 0 Then m.Name = LH_NAME
-    If m.TxnType = 0 Then m.TxnType = 4
-    If m.TransRef = 0 Then m.TransRef = LH_TRANS_REF
-    If m.Summary = 0 Then m.Summary = LH_SUMMARY
-    If m.Description = 0 Then m.Description = LH_DESCRIPTION
-    If m.Ccy = 0 Then m.Ccy = LH_CCY
-    If m.Pnl = 0 Then m.Pnl = LH_PNL
-    m.Valid = (m.Summary > 0 And m.Pnl > 0 And m.AccountId > 0 And m.Time > 0)
-    ResolveLedgerMap = m
+    m.Time = LH_TIME
+    m.AccountId = LH_ACCOUNT_ID
+    m.Name = LH_NAME
+    m.TxnType = 4
+    m.TransRef = LH_TRANS_REF
+    m.Summary = LH_SUMMARY
+    m.Description = LH_DESCRIPTION
+    m.Ccy = LH_CCY
+    m.Pnl = LH_PNL
+    m.Valid = True
+    IgLedgerMap = m
 End Function
 
-Private Function LedgerTextVal(v As Variant) As String
-    If IsEmpty(v) Or IsNull(v) Then
-        LedgerTextVal = ""
-    Else
-        LedgerTextVal = Trim$(CStr(v))
-    End If
-End Function
-
-Private Function ChiaveCashMovementRow(ByVal accountId As String, ByVal timeVal As Variant, ByVal importo As Double, ByVal transRef As String) As String
-    Dim ref As String
-    ref = Trim$(transRef)
-    If ref <> "" And ref <> "-" Then
-        ChiaveCashMovementRow = Trim$(accountId) & "|" & ref
-    Else
-        ChiaveCashMovementRow = Trim$(accountId) & "|" & NormalizzaTimeCash(timeVal) & "|" & Format$(importo, "0.00########")
-    End If
-End Function
-
-Private Function LedgerRefText(ws As Worksheet, ByVal r As Long, ByVal c As Long) As String
+Private Function LedgerCellText(ws As Worksheet, ByVal r As Long, ByVal c As Long) As String
     If c <= 0 Then
-        LedgerRefText = ""
+        LedgerCellText = ""
         Exit Function
     End If
-    LedgerRefText = Trim$(ws.Cells(r, c).Text)
-    If Left$(LedgerRefText, 1) = "'" Then LedgerRefText = Mid$(LedgerRefText, 2)
+    LedgerCellText = Trim$(CStr(ws.Cells(r, c).Value2))
+    If LedgerCellText = "" Then LedgerCellText = Trim$(ws.Cells(r, c).Text)
+    If Left$(LedgerCellText, 1) = "'" Then LedgerCellText = Mid$(LedgerCellText, 2)
+End Function
+
+Private Function ChiaveCashMovementRow(ByVal accountId As String, ByVal timeVal As Variant, ByVal importo As Double) As String
+    ChiaveCashMovementRow = Trim$(accountId) & "|" & NormalizzaTimeCash(timeVal) & "|" & Format$(importo, "0.00########")
 End Function
 
 Private Sub FormattaTransRefLedgerText(ws As Worksheet)
@@ -183,67 +145,31 @@ End Sub
 
 Private Const CASH_SUMMARY_MARKER As String = "RIASSUNTO"
 
-Private Sub RimuoviRiassuntoCashMovements(ws As Worksheet)
-    Dim r As Long
-    For r = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row To 2 Step -1
-        If Trim$(CStr(ws.Cells(r, 1).Value)) = CASH_SUMMARY_MARKER Then
-            ws.Range(ws.Cells(r, 1), ws.Cells(ws.Rows.Count, CM_COLS)).Clear
-            Exit Sub
-        End If
-    Next r
-End Sub
-
-Private Sub ScriviRiassuntoCashMovements(ws As Worksheet, ByVal lastDataRow As Long)
-    If lastDataRow < 2 Then Exit Sub
-    Dim data As Variant
-    data = ws.Range(ws.Cells(2, 1), ws.Cells(lastDataRow, CM_COLS)).Value2
-    Dim totVers As Double, totPrel As Double
-    Dim nVers As Long, nPrel As Long
-    Dim i As Long, tipo As String, amt As Double
-    For i = 1 To UBound(data, 1)
-        tipo = Trim$(CStr(data(i, CM_TYPE)))
-        amt = CDbl(SafeVal(data(i, CM_PNL)))
-        Select Case tipo
-            Case "Cash In"
-                totVers = totVers + amt
-                nVers = nVers + 1
-            Case "Cash Out"
-                totPrel = totPrel + amt
-                nPrel = nPrel + 1
-        End Select
-    Next i
-    Dim saldo As Double
-    saldo = totVers + totPrel
-    Dim r0 As Long
-    r0 = lastDataRow + 2
-    ws.Cells(r0, 1).Value = CASH_SUMMARY_MARKER
-    ws.Cells(r0, 1).Font.Bold = True
-    r0 = r0 + 1
-    ws.Cells(r0, 1).Value = "Totale versamenti"
-    ws.Cells(r0, CM_PNL).Value = totVers
-    ws.Cells(r0, CM_GSHEET).Value = totVers
-    r0 = r0 + 1
-    ws.Cells(r0, 1).Value = "Totale prelievi"
-    ws.Cells(r0, CM_PNL).Value = Abs(totPrel)
-    ws.Cells(r0, CM_GSHEET).Value = Abs(totPrel)
-    r0 = r0 + 1
-    ws.Cells(r0, 1).Value = "N° versamenti"
-    ws.Cells(r0, CM_PNL).Value = nVers
-    r0 = r0 + 1
-    ws.Cells(r0, 1).Value = "N° prelievi"
-    ws.Cells(r0, CM_PNL).Value = nPrel
-    r0 = r0 + 1
-    ws.Cells(r0, 1).Value = "Saldo (versamenti - prelievi)"
-    ws.Cells(r0, CM_PNL).Value = saldo
-    ws.Cells(r0, CM_GSHEET).Value = saldo
-    Dim rStart As Long
-    rStart = lastDataRow + 3
-    ws.Range(ws.Cells(rStart + 1, CM_PNL), ws.Cells(rStart + 2, CM_GSHEET)).NumberFormat = "[$€-410]#,##0.00"
-    ws.Range(ws.Cells(rStart + 1, CM_GSHEET), ws.Cells(rStart + 2, CM_GSHEET)).NumberFormat = "[$-409]0.00"
-    ws.Range(ws.Cells(rStart + 3, CM_PNL), ws.Cells(rStart + 4, CM_PNL)).NumberFormat = "0"
-    ws.Range(ws.Cells(rStart + 5, CM_PNL), ws.Cells(rStart + 5, CM_GSHEET)).NumberFormat = "[$€-410]#,##0.00"
-    ws.Cells(rStart + 5, CM_GSHEET).NumberFormat = "[$-409]0.00"
-    ws.Range(ws.Cells(rStart, 1), ws.Cells(rStart + 5, 1)).Font.Bold = True
+Private Sub ScriviRiassuntoColonneKL(ws As Worksheet, ByVal totVers As Double, ByVal totPrel As Double, ByVal nVers As Long, ByVal nPrel As Long, ByVal nTransfer As Long, ByVal saldo As Double)
+    ws.Range(ws.Cells(1, CM_META_LABEL), ws.Cells(8, CM_META_VALUE)).ClearContents
+    On Error Resume Next
+    ws.Range(ws.Cells(1, CM_META_LABEL), ws.Cells(1, CM_META_VALUE)).UnMerge
+    On Error GoTo 0
+    ws.Range(ws.Cells(1, CM_META_LABEL), ws.Cells(1, CM_META_VALUE)).Merge
+    ws.Cells(1, CM_META_LABEL).Value = CASH_SUMMARY_MARKER
+    ws.Cells(1, CM_META_LABEL).Font.Bold = True
+    ws.Cells(1, CM_META_LABEL).HorizontalAlignment = xlCenter
+    ws.Cells(2, CM_META_LABEL).Value = "Totale versamenti"
+    ws.Cells(2, CM_META_VALUE).Value = totVers
+    ws.Cells(3, CM_META_LABEL).Value = "Totale prelievi"
+    ws.Cells(3, CM_META_VALUE).Value = Abs(totPrel)
+    ws.Cells(4, CM_META_LABEL).Value = "N° versamenti"
+    ws.Cells(4, CM_META_VALUE).Value = nVers
+    ws.Cells(5, CM_META_LABEL).Value = "N° prelievi"
+    ws.Cells(5, CM_META_VALUE).Value = nPrel
+    ws.Cells(6, CM_META_LABEL).Value = "N° transfer interni"
+    ws.Cells(6, CM_META_VALUE).Value = nTransfer
+    ws.Cells(7, CM_META_LABEL).Value = "Saldo (versamenti - prelievi)"
+    ws.Cells(7, CM_META_VALUE).Value = saldo
+    ws.Range(ws.Cells(2, CM_META_LABEL), ws.Cells(7, CM_META_LABEL)).Font.Bold = True
+    ws.Range(ws.Cells(2, CM_META_VALUE), ws.Cells(3, CM_META_VALUE)).NumberFormat = "[$€-410]#,##0.00"
+    ws.Range(ws.Cells(4, CM_META_VALUE), ws.Cells(6, CM_META_VALUE)).NumberFormat = "0"
+    ws.Cells(7, CM_META_VALUE).NumberFormat = "[$€-410]#,##0.00"
 End Sub
 
 Private Function ColonnaExcelLetter(ws As Worksheet, ByVal colNum As Long) As String
@@ -251,12 +177,12 @@ Private Function ColonnaExcelLetter(ws As Worksheet, ByVal colNum As Long) As St
 End Function
 
 Private Sub ScriviInfoCashMovements(ws As Worksheet, wsLedger As Worksheet, ByVal cnt As Long, ByVal dupes As Long, ByVal skipped As Long, cols As LedgerMap)
-    ws.Range(ws.Cells(1, CM_META_LABEL), ws.Cells(40, CM_META_VALUE + 2)).ClearContents
-    ws.Range(ws.Cells(1, CM_META_LABEL), ws.Cells(1, CM_META_VALUE)).Merge
-    ws.Cells(1, CM_META_LABEL).Value = "Controllo import (ledger)"
-    ws.Cells(1, CM_META_LABEL).Font.Bold = True
+    ws.Range(ws.Cells(9, CM_META_LABEL), ws.Cells(40, CM_META_VALUE + 2)).ClearContents
     Dim r As Long
-    r = 2
+    r = 9
+    ws.Cells(r, CM_META_LABEL).Value = "Controllo import (ledger)"
+    ws.Cells(r, CM_META_LABEL).Font.Bold = True
+    r = r + 1
     ws.Cells(r, CM_META_LABEL).Value = "Righe cash"
     ws.Cells(r, CM_META_VALUE).Value = cnt
     r = r + 1
@@ -268,12 +194,6 @@ Private Sub ScriviInfoCashMovements(ws As Worksheet, wsLedger As Worksheet, ByVa
     r = r + 1
     ws.Cells(r, CM_META_LABEL).Value = "Col. Trans Ref (ledger)"
     ws.Cells(r, CM_META_VALUE).Value = cols.TransRef
-    r = r + 1
-    ws.Cells(r, CM_META_LABEL).Value = "Col. Time"
-    ws.Cells(r, CM_META_VALUE).Value = cols.Time
-    r = r + 1
-    ws.Cells(r, CM_META_LABEL).Value = "Col. Account"
-    ws.Cells(r, CM_META_VALUE).Value = cols.AccountId
     r = r + 1
     ws.Cells(r, CM_META_LABEL).Value = "Duplicati ignorati"
     ws.Cells(r, CM_META_VALUE).Value = dupes
@@ -291,8 +211,8 @@ Private Sub ScriviInfoCashMovements(ws As Worksheet, wsLedger As Worksheet, ByVa
     Dim c As Long
     For c = 1 To 14
         r = r + 1
-        ws.Cells(r, CM_META_LABEL).Value = ColonnaExcelLetter(c)
-        ws.Cells(r, CM_META_VALUE).Value = LedgerTextVal(wsLedger.Cells(1, c).Value)
+        ws.Cells(r, CM_META_LABEL).Value = ColonnaExcelLetter(wsLedger, c)
+        ws.Cells(r, CM_META_VALUE).Value = LedgerCellText(wsLedger, 1, c)
     Next c
     ws.Columns(CM_META_LABEL).AutoFit
     ws.Columns(CM_META_VALUE).AutoFit
@@ -354,12 +274,7 @@ Sub AggiornaCashMovements()
     Dim wsLedger As Worksheet: Set wsLedger = ThisWorkbook.Sheets("Ledger_History")
     Dim wsCash As Worksheet: Set wsCash = GetOrCreateSheet("Cash_Movements")
     Dim cols As LedgerMap
-    cols = ResolveLedgerMap(wsLedger)
-    If Not cols.Valid Then
-        MsgBox "Impossibile mappare le colonne del Ledger (Summary / Profit-Loss / Account)." & vbCrLf & _
-               "Controlla la riga 1 di Ledger_History.", vbCritical
-        Exit Sub
-    End If
+    cols = IgLedgerMap()
     FormattaTransRefLedgerText wsLedger
     Application.ScreenUpdating = False
     wsCash.Cells.Clear
@@ -380,79 +295,64 @@ Sub AggiornaCashMovements()
         MsgBox "Ledger vuoto.", vbExclamation
         Exit Sub
     End If
-    Dim lastColL As Long
-    lastColL = wsLedger.Cells(1, wsLedger.Columns.Count).End(xlToLeft).Column
-    If lastColL < cols.Pnl Then lastColL = cols.Pnl
-    Dim led As Variant
-    led = wsLedger.Range(wsLedger.Cells(2, 1), wsLedger.Cells(lastRowL, lastColL)).Value2
     Dim dictChiavi As Object: Set dictChiavi = CreateObject("Scripting.Dictionary")
-    Dim cap As Long: cap = 256
-    Dim buf() As Variant
-    ReDim buf(1 To CM_COLS, 1 To cap)
     Dim cnt As Long: cnt = 0
     Dim dupes As Long: dupes = 0
     Dim skipped As Long: skipped = 0
+    Dim totVers As Double, totPrel As Double
+    Dim nVers As Long, nPrel As Long, nTransfer As Long
+    Dim outRow As Long
+    outRow = 2
     Dim r As Long
-    For r = 1 To UBound(led, 1)
+    For r = 2 To lastRowL
         Dim summaryVal As String
-        summaryVal = LedgerTextVal(led(r, cols.Summary))
-        If Not IsCashMovement(summaryVal) Then
+        summaryVal = LedgerCellText(wsLedger, r, cols.Summary)
+        Dim descVal As String
+        descVal = LedgerCellText(wsLedger, r, cols.Description)
+        Dim txnType As String
+        txnType = LedgerCellText(wsLedger, r, cols.TxnType)
+        If Not RigaLedgerECash(summaryVal, txnType, descVal) Then
             skipped = skipped + 1
             GoTo NextL
         End If
         Dim accountId As String
-        accountId = LedgerTextVal(led(r, cols.AccountId))
+        accountId = LedgerCellText(wsLedger, r, cols.AccountId)
         If accountId = "" Then GoTo NextL
-        Dim transRef As String
-        transRef = LedgerRefText(wsLedger, r + 1, cols.TransRef)
-        Dim txnType As String
-        If cols.TxnType > 0 And cols.TxnType <= UBound(led, 2) Then
-            txnType = LedgerTextVal(led(r, cols.TxnType))
-        Else
-            txnType = ""
-        End If
         Dim importo As Double
-        importo = CDbl(SafeVal(led(r, cols.Pnl)))
+        importo = CDbl(SafeVal(wsLedger.Cells(r, cols.Pnl).Value2))
         Dim chiave As String
-        chiave = ChiaveCashMovementRow(accountId, led(r, cols.Time), importo, transRef)
+        chiave = ChiaveCashMovementRow(accountId, wsLedger.Cells(r, cols.Time).Value2, importo)
         If dictChiavi.Exists(chiave) Then
             dupes = dupes + 1
             GoTo NextL
         End If
-        cnt = cnt + 1
-        If cnt > cap Then
-            cap = cap * 2
-            ReDim Preserve buf(1 To CM_COLS, 1 To cap)
-        End If
-        buf(CM_TIME, cnt) = led(r, cols.Time)
-        buf(CM_ACCOUNT, cnt) = accountId
-        If cols.Name > 0 And cols.Name <= UBound(led, 2) Then
-            buf(CM_NAME, cnt) = PulisciNomeCliente(LedgerTextVal(led(r, cols.Name)))
-        Else
-            buf(CM_NAME, cnt) = ""
-        End If
-        buf(CM_TYPE, cnt) = TipoCashMovement(summaryVal, importo, txnType)
-        buf(CM_SUMMARY, cnt) = summaryVal
-        If cols.Description > 0 And cols.Description <= UBound(led, 2) Then
-            buf(CM_DESC, cnt) = LedgerTextVal(led(r, cols.Description))
-        Else
-            buf(CM_DESC, cnt) = ""
-        End If
-        If cols.Ccy > 0 And cols.Ccy <= UBound(led, 2) Then
-            buf(CM_CCY, cnt) = LedgerTextVal(led(r, cols.Ccy))
-        Else
-            buf(CM_CCY, cnt) = ""
-        End If
-        buf(CM_PNL, cnt) = importo
-        buf(CM_GSHEET, cnt) = importo
+        Dim tipo As String
+        tipo = TipoCashMovement(summaryVal, importo, txnType)
+        Select Case tipo
+            Case "Cash In"
+                totVers = totVers + importo
+                nVers = nVers + 1
+            Case "Cash Out"
+                totPrel = totPrel + importo
+                nPrel = nPrel + 1
+            Case "Inter Account Transfer"
+                nTransfer = nTransfer + 1
+        End Select
+        wsCash.Cells(outRow, CM_TIME).Value = wsLedger.Cells(r, cols.Time).Value2
+        wsCash.Cells(outRow, CM_ACCOUNT).Value = accountId
+        wsCash.Cells(outRow, CM_NAME).Value = PulisciNomeCliente(LedgerCellText(wsLedger, r, cols.Name))
+        wsCash.Cells(outRow, CM_TYPE).Value = tipo
+        wsCash.Cells(outRow, CM_SUMMARY).Value = summaryVal
+        wsCash.Cells(outRow, CM_DESC).Value = descVal
+        wsCash.Cells(outRow, CM_CCY).Value = LedgerCellText(wsLedger, r, cols.Ccy)
+        wsCash.Cells(outRow, CM_PNL).Value = importo
+        wsCash.Cells(outRow, CM_GSHEET).Value = importo
         dictChiavi.Add chiave, 1
+        cnt = cnt + 1
+        outRow = outRow + 1
 NextL:
     Next r
     If cnt > 0 Then
-        ReDim Preserve buf(1 To CM_COLS, 1 To cnt)
-        Dim out2D As Variant
-        out2D = Application.WorksheetFunction.Transpose(buf)
-        wsCash.Range(wsCash.Cells(2, 1), wsCash.Cells(1 + cnt, CM_COLS)).Value2 = out2D
         With wsCash.Range(wsCash.Cells(2, CM_TIME), wsCash.Cells(1 + cnt, CM_TIME))
             .NumberFormat = "dd/mm/yyyy hh:mm:ss"
         End With
@@ -460,13 +360,15 @@ NextL:
         wsCash.Range(wsCash.Cells(2, CM_GSHEET), wsCash.Cells(1 + cnt, CM_GSHEET)).NumberFormat = "[$-409]0.00"
         wsCash.Range("A2:I" & (1 + cnt)).Sort Key1:=wsCash.Range("A2"), Order1:=xlAscending, Header:=xlNo
     End If
-    ScriviRiassuntoCashMovements wsCash, 1 + cnt
+    Dim saldo As Double
+    saldo = totVers + totPrel
+    ScriviRiassuntoColonneKL wsCash, totVers, totPrel, nVers, nPrel, nTransfer, saldo
     ScriviInfoCashMovements wsCash, wsLedger, cnt, dupes, skipped, cols
     wsCash.Columns("A:L").AutoFit
     wsCash.Activate
     wsCash.Cells(1, CM_META_LABEL).Select
     Application.ScreenUpdating = True
-    MsgBox "Cash Movements aggiornato. Controlla colonne K-L per riepilogo e intestazioni ledger.", vbInformation
+    MsgBox "Cash Movements aggiornato: " & cnt & " righe. Riassunto in K-L.", vbInformation
 End Sub
 
 Sub CalcolaVolumi_Direct_USD()
