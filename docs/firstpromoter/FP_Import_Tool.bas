@@ -588,6 +588,7 @@ Public Sub SendToFirstPromoter()
         Dim payDate As Date
         Dim custEmail As String
         Dim coupon As String
+        Dim fpRefID As String
         Dim customerUID As String
         Dim amountEUR As Double
         Dim requestPayload As String
