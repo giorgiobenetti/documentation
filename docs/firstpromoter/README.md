@@ -25,7 +25,7 @@ Questa cartella contiene il modulo VBA importabile `FP_Import_Tool.bas` per un w
 - Parser CSV BCE basato sulle intestazioni `TIME_PERIOD` e `OBS_VALUE`, con supporto per campi quotati.
 - Conversione EUR/USD coerente con il tasso BCE `USD per 1 EUR`: importi USD convertiti in EUR con `amount / rate`; importi EUR lasciati invariati.
 - Filtri indipendenti per `Already Paid` e `To Be Paid`, con righe verdi per pagati e gialle per da pagare.
-- Invio FirstPromoter referral-only tramite WinHTTP: usa `/api/v2/track/signup` con email cliente, `uid` = Stripe Customer ID, `ref_id` = Coupon. Non crea sale, commissioni o payout storici.
+- Invio FirstPromoter referral-only tramite WinHTTP: usa `/api/v2/track/signup` con email cliente, `uid` = Stripe Customer ID, `promo_code` = Coupon e `ref_id` = FirstPromoter referral link token. Non crea sale, commissioni o payout storici.
 
 ## Troubleshooting invio FirstPromoter
 
@@ -47,7 +47,8 @@ Payload inviato per ogni riga:
 {
   "email": "cliente@example.com",
   "uid": "cus_...",
-  "ref_id": "GO20",
+  "ref_id": "be20",
+  "promo_code": "SCATTA10",
   "created_at": "2026-05-10T00:00:00Z",
   "skip_email_notification": true
 }
@@ -82,7 +83,7 @@ Se alcune righe risultano inviate ma non compaiono in FirstPromoter, controlla `
 | A | Timestamp |
 | B | Riga in `Filter_Output` |
 | C | Payment ID |
-| D | Coupon / promo code, inviato anche come `ref_id` |
+| D | Coupon / promo code |
 | E | Importo EUR |
 | F | HTTP status (`200`, `204`, `400`, `404`, `409`, `0`, ecc.) |
 | G | Significato sintetico |
@@ -122,7 +123,8 @@ Per ogni referral importato il modulo invia:
 
 - `created_at` = data storica del pagamento/riga;
 - `uid` = Stripe Customer ID (`cus_...`) dalla colonna L di `Filter_Output`;
-- `ref_id` = coupon/promoter code dalla colonna D.
+- `promo_code` = coupon dalla colonna D;
+- `ref_id` = FirstPromoter referral link token dalla colonna M. Se colonna M e vuota, usa il coupon come fallback.
 
 Questo consente a FirstPromoter di associare il cliente storico al promoter senza creare commissioni passate. I rinnovi futuri dovranno arrivare a FirstPromoter con lo stesso `uid`.
 
@@ -160,6 +162,20 @@ La commissione calcolata e solo reportistica: non crea commissioni o payout in F
 
 ## Layout atteso
 
+
+### `Coupon_Map`
+
+Layout dalla riga 4:
+
+| Colonna | Campo |
+| --- | --- |
+| A | Customer Email |
+| B | Coupon / promo code usato dal cliente, es. `SCATTA10` |
+| C | Affiliate / influencer name |
+| D | FirstPromoter Ref ID / referral link token, es. `be20` |
+
+La colonna D e importante quando il coupon non coincide con il referral link token. Esempio: se in FirstPromoter il referral link token e `be20` e i tracking coupon sono `SCATTA10`, `SCATTA5`, `BE30`, allora in colonna B metti il coupon specifico e in colonna D metti sempre `be20`.
+
 ### `Payments`
 
 Il modulo cerca le intestazioni nelle prime 10 righe. Se non le trova, usa il layout storico con dati dalla riga 4:
@@ -181,4 +197,4 @@ Il modulo cerca le intestazioni nelle prime 10 righe. Se non le trova, usa il la
 - `B4`: lista coupon separati da virgola, punto e virgola o nuova riga.
 - `B5:D5`: intervallo `Already Paid`.
 - `B6:D6`: intervallo `To Be Paid`.
-- Output dalla riga 11, colonne `A:L`; la colonna `K` viene usata come stato importazione (`No`, `Referral Imported`, `Referral Exists`, `Referral Error`); la colonna `L` contiene lo Stripe Customer ID / `uid` quando disponibile.
+- Output dalla riga 11, colonne `A:M`; la colonna `K` viene usata come stato importazione (`No`, `Referral Imported`, `Referral Exists`, `Referral Error`); la colonna `L` contiene lo Stripe Customer ID / `uid`; la colonna `M` contiene il FirstPromoter Ref ID effettivo.

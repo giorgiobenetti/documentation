@@ -226,9 +226,11 @@ Public Sub GenerateOutput()
 
     Dim couponByEmail As Object
     Dim affiliateByEmail As Object
+    Dim refIDByEmail As Object
     Set couponByEmail = CreateObject("Scripting.Dictionary")
     Set affiliateByEmail = CreateObject("Scripting.Dictionary")
-    LoadCouponMap wsM, couponByEmail, affiliateByEmail
+    Set refIDByEmail = CreateObject("Scripting.Dictionary")
+    LoadCouponMap wsM, couponByEmail, affiliateByEmail, refIDByEmail
 
     Dim dataStartRow As Long
     Dim colID As Long
@@ -244,7 +246,7 @@ Public Sub GenerateOutput()
 
     Dim lastOutputRow As Long
     lastOutputRow = Application.Max(OUTPUT_FIRST_ROW, wsO.Cells(wsO.Rows.Count, 1).End(xlUp).Row)
-    ClearRangeContentsAndFill wsO.Range("A" & OUTPUT_FIRST_ROW & ":L" & lastOutputRow)
+    ClearRangeContentsAndFill wsO.Range("A" & OUTPUT_FIRST_ROW & ":M" & lastOutputRow)
 
     Dim lastRow As Long
     lastRow = wsP.Cells(wsP.Rows.Count, colID).End(xlUp).Row
@@ -288,11 +290,15 @@ Public Sub GenerateOutput()
 
         Dim coupon As String
         Dim affiliateName As String
+        Dim fpRefID As String
         coupon = vbNullString
         affiliateName = vbNullString
+        fpRefID = vbNullString
 
         If couponByEmail.Exists(custEmail) Then coupon = CStr(couponByEmail(custEmail))
         If affiliateByEmail.Exists(custEmail) Then affiliateName = CStr(affiliateByEmail(custEmail))
+        If refIDByEmail.Exists(custEmail) Then fpRefID = CStr(refIDByEmail(custEmail))
+        If fpRefID = vbNullString Then fpRefID = coupon
 
         If Not CouponIsAllowed(coupon, couponFilters) Then GoTo NextPaymentRow
 
@@ -344,8 +350,9 @@ Public Sub GenerateOutput()
         wsO.Cells(outRow, 10).Value = statusText
         wsO.Cells(outRow, 11).Value = "No"
         wsO.Cells(outRow, 12).Value = stripeCustomerID
+        wsO.Cells(outRow, 13).Value = fpRefID
 
-        ApplyStatusFill wsO.Range(wsO.Cells(outRow, 1), wsO.Cells(outRow, 12)), statusText
+        ApplyStatusFill wsO.Range(wsO.Cells(outRow, 1), wsO.Cells(outRow, 13)), statusText
 
         outRow = outRow + 1
 
@@ -397,9 +404,11 @@ Public Sub GenerateInfluencerReport()
 
     Dim couponByEmail As Object
     Dim affiliateByEmail As Object
+    Dim refIDByEmail As Object
     Set couponByEmail = CreateObject("Scripting.Dictionary")
     Set affiliateByEmail = CreateObject("Scripting.Dictionary")
-    LoadCouponMap wsM, couponByEmail, affiliateByEmail
+    Set refIDByEmail = CreateObject("Scripting.Dictionary")
+    LoadCouponMap wsM, couponByEmail, affiliateByEmail, refIDByEmail
 
     Dim dataStartRow As Long
     Dim colID As Long
@@ -590,6 +599,7 @@ Public Sub SendToFirstPromoter()
         payID = vbNullString
         custEmail = vbNullString
         coupon = vbNullString
+        fpRefID = vbNullString
         customerUID = vbNullString
         amountEUR = 0
         requestPayload = vbNullString
@@ -625,8 +635,13 @@ Public Sub SendToFirstPromoter()
 
         stage = "Validate ref_id / coupon"
         coupon = Trim$(CStr(wsO.Cells(i, 4).Value))
+        fpRefID = Trim$(CStr(wsO.Cells(i, 13).Value))
+        If fpRefID = vbNullString Then fpRefID = coupon
         If coupon = vbNullString Then
-            Err.Raise vbObjectError + 1703, "SendToFirstPromoter", "Missing ref_id / coupon in Filter_Output column D."
+            Err.Raise vbObjectError + 1703, "SendToFirstPromoter", "Missing promo_code / coupon in Filter_Output column D."
+        End If
+        If fpRefID = vbNullString Then
+            Err.Raise vbObjectError + 1707, "SendToFirstPromoter", "Missing FirstPromoter ref_id in Filter_Output column M."
         End If
 
         stage = "Validate Stripe customer uid"
@@ -638,7 +653,7 @@ Public Sub SendToFirstPromoter()
         Call TryParseNumber(wsO.Cells(i, 8).Value, amountEUR)
 
         stage = "Build FirstPromoter signup payload"
-        requestPayload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, customerUID)
+        requestPayload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, fpRefID, customerUID)
 
         stage = "HTTP signup request to FirstPromoter"
         Call PostFirstPromoterSignup(requestPayload, apiKey, fpStatus, fpResponse)
@@ -853,6 +868,7 @@ Public Sub TestFirstPromoterSignupSelectedRow()
     Dim payDate As Date
     Dim custEmail As String
     Dim coupon As String
+    Dim fpRefID As String
     Dim customerUID As String
     Dim payload As String
     Dim fpStatus As Long
@@ -861,13 +877,16 @@ Public Sub TestFirstPromoterSignupSelectedRow()
     If Not TryParseDate(wsO.Cells(rowNumber, 2).Value, payDate) Then Err.Raise vbObjectError + 1651, "TestFirstPromoterSignupSelectedRow", "Invalid date in column B."
     custEmail = NormalizeEmail(wsO.Cells(rowNumber, 3).Value)
     coupon = Trim$(CStr(wsO.Cells(rowNumber, 4).Value))
+    fpRefID = Trim$(CStr(wsO.Cells(rowNumber, 13).Value))
+    If fpRefID = vbNullString Then fpRefID = coupon
     customerUID = Trim$(CStr(wsO.Cells(rowNumber, 12).Value))
 
     If custEmail = vbNullString Then Err.Raise vbObjectError + 1652, "TestFirstPromoterSignupSelectedRow", "Missing email in column C."
-    If coupon = vbNullString Then Err.Raise vbObjectError + 1653, "TestFirstPromoterSignupSelectedRow", "Missing ref_id/coupon in column D."
+    If coupon = vbNullString Then Err.Raise vbObjectError + 1653, "TestFirstPromoterSignupSelectedRow", "Missing promo_code/coupon in column D."
+    If fpRefID = vbNullString Then Err.Raise vbObjectError + 1655, "TestFirstPromoterSignupSelectedRow", "Missing ref_id in column M."
     If customerUID = vbNullString Then Err.Raise vbObjectError + 1654, "TestFirstPromoterSignupSelectedRow", "Missing uid / Stripe Customer ID in column L."
 
-    payload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, customerUID)
+    payload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, fpRefID, customerUID)
     Call PostFirstPromoterSignup(payload, GetFirstPromoterApiKey(), fpStatus, fpResponse)
 
     MsgBox "FirstPromoter signup test" & vbCrLf & _
@@ -932,7 +951,7 @@ Public Sub DiagnoseFirstPromoterSelectedRow()
     If Not IsFirstPromoterV2() Then Err.Raise vbObjectError + 1606, "DiagnoseFirstPromoterSelectedRow", "Referral-only import requires FP_ACCOUNT_ID / API v2."
 
     Dim requestPayload As String
-    requestPayload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, customerUID)
+    requestPayload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, Trim$(CStr(wsO.Cells(rowNumber, 13).Value)), customerUID)
 
     MsgBox "Local validation OK. No request was sent." & vbCrLf & vbCrLf & _
            "Checks:" & vbCrLf & _
@@ -1112,7 +1131,7 @@ Private Sub PostFirstPromoterSale(ByVal requestPayload As String, _
         Dim signupStatus As Long
         Dim signupResponse As String
         Dim signupPayload As String
-        signupPayload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, customerUID)
+        signupPayload = BuildFirstPromoterSignupJson(payDate, custEmail, coupon, coupon, customerUID)
 
         Call PostFirstPromoterSignup(signupPayload, apiKey, signupStatus, signupResponse)
         If signupStatus <> 200 And signupStatus <> 422 Then
@@ -1555,7 +1574,7 @@ Private Function CouponIsAllowed(ByVal coupon As String, ByVal couponFilters As 
     End If
 End Function
 
-Private Sub LoadCouponMap(ByVal ws As Worksheet, ByVal couponByEmail As Object, ByVal affiliateByEmail As Object)
+Private Sub LoadCouponMap(ByVal ws As Worksheet, ByVal couponByEmail As Object, ByVal affiliateByEmail As Object, Optional ByVal refIDByEmail As Object = Nothing)
     Dim lastRow As Long
     lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
 
@@ -1566,6 +1585,7 @@ Private Sub LoadCouponMap(ByVal ws As Worksheet, ByVal couponByEmail As Object, 
         If email <> vbNullString Then
             couponByEmail(email) = Trim$(CStr(ws.Cells(i, 2).Value))
             affiliateByEmail(email) = Trim$(CStr(ws.Cells(i, 3).Value))
+            If Not refIDByEmail Is Nothing Then refIDByEmail(email) = Trim$(CStr(ws.Cells(i, 4).Value))
         End If
     Next i
 End Sub
@@ -1839,9 +1859,12 @@ End Function
 Private Function BuildFirstPromoterSignupJson(ByVal signupDate As Date, _
                                               ByVal custEmail As String, _
                                               ByVal coupon As String, _
+                                              ByVal fpRefID As String, _
                                               ByVal customerUID As String) As String
+    If Trim$(fpRefID) = vbNullString Then fpRefID = coupon
     BuildFirstPromoterSignupJson = "{" & _
-        JsonString("ref_id") & ":" & JsonString(Trim$(coupon)) & "," & _
+        JsonString("ref_id") & ":" & JsonString(Trim$(fpRefID)) & "," & _
+        JsonString("promo_code") & ":" & JsonString(Trim$(coupon)) & "," & _
         JsonString("email") & ":" & JsonString(NormalizeEmail(custEmail)) & "," & _
         OptionalJsonStringProperty("uid", customerUID) & _
         JsonString("created_at") & ":" & JsonString(Format$(signupDate, "yyyy-mm-dd\Thh:nn:ss\Z")) & "," & _
