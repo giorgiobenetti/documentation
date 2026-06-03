@@ -47,6 +47,28 @@ Function IsMT4(channelVal As String) As Boolean
     IsMT4 = (InStr(1, Trim$(channelVal), "MT4", vbTextCompare) > 0)
 End Function
 
+Private Function NormalizzaTimeCash(val As Variant) As String
+    On Error Resume Next
+    If IsEmpty(val) Then
+        NormalizzaTimeCash = ""
+    ElseIf IsDate(val) Then
+        NormalizzaTimeCash = Format$(CDate(val), "yyyy-mm-dd hh:nn:ss")
+    Else
+        Dim s As String
+        s = Trim$(CStr(val))
+        If Len(s) > 0 And IsDate(s) Then
+            NormalizzaTimeCash = Format$(CDate(s), "yyyy-mm-dd hh:nn:ss")
+        Else
+            NormalizzaTimeCash = s
+        End If
+    End If
+    On Error GoTo 0
+End Function
+
+Private Function ChiaveCashMovement(ByVal accountId As String, ByVal timeVal As Variant, ByVal importo As Double) As String
+    ChiaveCashMovement = Trim$(accountId) & "|" & NormalizzaTimeCash(timeVal) & "|" & Format$(importo, "0.00########")
+End Function
+
 Private Const CASH_SUMMARY_MARKER As String = "RIASSUNTO"
 
 Private Sub RimuoviRiassuntoCashMovements(ws As Worksheet)
@@ -186,8 +208,8 @@ Sub AggiornaCashMovements()
         Dim ex As Long
         For ex = 1 To UBound(existData, 1)
             Dim chiaveEx As String
-            chiaveEx = Trim$(CStr(existData(ex, 5))) & "|" & Trim$(CStr(existData(ex, 1)))
-            If chiaveEx <> "|" Then dictChiavi(chiaveEx) = 1
+            chiaveEx = ChiaveCashMovement(CStr(existData(ex, 2)), existData(ex, 1), CDbl(SafeVal(existData(ex, 8))))
+            If chiaveEx <> "||" Then dictChiavi(chiaveEx) = 1
         Next ex
     End If
     Dim lastRowL As Long: lastRowL = wsLedger.Cells(wsLedger.Rows.Count, 1).End(xlUp).Row
@@ -210,16 +232,14 @@ Sub AggiornaCashMovements()
         Dim summaryVal As String
         summaryVal = Trim$(CStr(led(r, LH_SUMMARY)))
         If Not IsCashMovement(summaryVal) Then GoTo NextL
-        Dim timeVal As String
-        timeVal = Trim$(CStr(led(r, LH_TIME)))
+        Dim importo As Double
+        importo = CDbl(SafeVal(led(r, LH_PNL)))
         Dim chiave As String
-        chiave = summaryVal & "|" & timeVal
+        chiave = ChiaveCashMovement(CStr(led(r, LH_ACCOUNT_ID)), led(r, LH_TIME), importo)
         If dictChiavi.Exists(chiave) Then
             dupes = dupes + 1
             GoTo NextL
         End If
-        Dim importo As Double
-        importo = CDbl(SafeVal(led(r, LH_PNL)))
         cnt = cnt + 1
         If cnt > cap Then
             cap = cap * 2
