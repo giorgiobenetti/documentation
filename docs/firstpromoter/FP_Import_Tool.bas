@@ -307,7 +307,6 @@ Public Sub GenerateOutput()
         fpRefID = vbNullString
 
         If paymentCoupon <> vbNullString Then coupon = paymentCoupon
-        If coupon = vbNullString Then coupon = SingleCouponFilterValue(couponFilters)
         If coupon = vbNullString And couponByEmail.Exists(custEmail) Then coupon = CStr(couponByEmail(custEmail))
         If affiliateByEmail.Exists(custEmail) Then affiliateName = CStr(affiliateByEmail(custEmail))
         If affiliateName = vbNullString And affiliateByCoupon.Exists(UCase$(coupon)) Then affiliateName = CStr(affiliateByCoupon(UCase$(coupon)))
@@ -501,7 +500,6 @@ Public Sub GenerateInfluencerReport()
         coupon = vbNullString
         affiliateName = vbNullString
         If paymentCoupon <> vbNullString Then coupon = paymentCoupon
-        If coupon = vbNullString Then coupon = SingleCouponFilterValue(couponFilters)
         If coupon = vbNullString And couponByEmail.Exists(custEmail) Then coupon = Trim$(CStr(couponByEmail(custEmail)))
         If affiliateByEmail.Exists(custEmail) Then affiliateName = Trim$(CStr(affiliateByEmail(custEmail)))
         If affiliateName = vbNullString And affiliateByCoupon.Exists(UCase$(coupon)) Then affiliateName = Trim$(CStr(affiliateByCoupon(UCase$(coupon))))
@@ -1592,17 +1590,6 @@ Private Function BuildCouponFilter(ByVal filterText As String) As Object
     Next i
 
     If dict.Count > 0 Then Set BuildCouponFilter = dict
-End Function
-
-Private Function SingleCouponFilterValue(ByVal couponFilters As Object) As String
-    If couponFilters Is Nothing Then Exit Function
-    If couponFilters.Count <> 1 Then Exit Function
-
-    Dim key As Variant
-    For Each key In couponFilters.Keys
-        SingleCouponFilterValue = CStr(key)
-        Exit Function
-    Next key
 End Function
 
 Private Function CouponIsAllowed(ByVal coupon As String, ByVal couponFilters As Object) As Boolean
