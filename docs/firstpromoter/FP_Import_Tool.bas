@@ -227,10 +227,14 @@ Public Sub GenerateOutput()
     Dim couponByEmail As Object
     Dim affiliateByEmail As Object
     Dim refIDByEmail As Object
+    Dim refIDByCoupon As Object
+    Dim affiliateByCoupon As Object
     Set couponByEmail = CreateObject("Scripting.Dictionary")
     Set affiliateByEmail = CreateObject("Scripting.Dictionary")
     Set refIDByEmail = CreateObject("Scripting.Dictionary")
-    LoadCouponMap wsM, couponByEmail, affiliateByEmail, refIDByEmail
+    Set refIDByCoupon = CreateObject("Scripting.Dictionary")
+    Set affiliateByCoupon = CreateObject("Scripting.Dictionary")
+    LoadCouponMap wsM, couponByEmail, affiliateByEmail, refIDByEmail, refIDByCoupon, affiliateByCoupon
 
     Dim dataStartRow As Long
     Dim colID As Long
@@ -240,9 +244,10 @@ Public Sub GenerateOutput()
     Dim colCurrency As Long
     Dim colRefundedDate As Long
     Dim colEmail As Long
+    Dim colCoupon As Long
     Dim colCustomerID As Long
     Dim colDisputeDate As Long
-    ResolvePaymentsLayout wsP, dataStartRow, colID, colCreated, colAmount, colRefundedAmount, colCurrency, colRefundedDate, colEmail, colCustomerID, colDisputeDate
+    ResolvePaymentsLayout wsP, dataStartRow, colID, colCreated, colAmount, colRefundedAmount, colCurrency, colRefundedDate, colEmail, colCoupon, colCustomerID, colDisputeDate
 
     Dim lastOutputRow As Long
     lastOutputRow = Application.Max(OUTPUT_FIRST_ROW, wsO.Cells(wsO.Rows.Count, 1).End(xlUp).Row)
@@ -278,6 +283,9 @@ Public Sub GenerateOutput()
         paymentCurrency = UCase$(Trim$(CStr(wsP.Cells(i, colCurrency).Value)))
         refundDate = Trim$(CStr(wsP.Cells(i, colRefundedDate).Value))
         custEmail = NormalizeEmail(wsP.Cells(i, colEmail).Value)
+        Dim paymentCoupon As String
+        paymentCoupon = vbNullString
+        If colCoupon > 0 Then paymentCoupon = Trim$(CStr(wsP.Cells(i, colCoupon).Value))
         Dim stripeCustomerID As String
         stripeCustomerID = vbNullString
         If colCustomerID > 0 Then stripeCustomerID = Trim$(CStr(wsP.Cells(i, colCustomerID).Value))
@@ -295,9 +303,13 @@ Public Sub GenerateOutput()
         affiliateName = vbNullString
         fpRefID = vbNullString
 
-        If couponByEmail.Exists(custEmail) Then coupon = CStr(couponByEmail(custEmail))
+        If paymentCoupon <> vbNullString Then coupon = paymentCoupon
+        If coupon = vbNullString Then coupon = SingleCouponFilterValue(couponFilters)
+        If coupon = vbNullString And couponByEmail.Exists(custEmail) Then coupon = CStr(couponByEmail(custEmail))
         If affiliateByEmail.Exists(custEmail) Then affiliateName = CStr(affiliateByEmail(custEmail))
+        If affiliateName = vbNullString And affiliateByCoupon.Exists(UCase$(coupon)) Then affiliateName = CStr(affiliateByCoupon(UCase$(coupon)))
         If refIDByEmail.Exists(custEmail) Then fpRefID = CStr(refIDByEmail(custEmail))
+        If refIDByCoupon.Exists(UCase$(coupon)) Then fpRefID = CStr(refIDByCoupon(UCase$(coupon)))
         If fpRefID = vbNullString Then fpRefID = coupon
 
         If Not CouponIsAllowed(coupon, couponFilters) Then GoTo NextPaymentRow
@@ -405,10 +417,14 @@ Public Sub GenerateInfluencerReport()
     Dim couponByEmail As Object
     Dim affiliateByEmail As Object
     Dim refIDByEmail As Object
+    Dim refIDByCoupon As Object
+    Dim affiliateByCoupon As Object
     Set couponByEmail = CreateObject("Scripting.Dictionary")
     Set affiliateByEmail = CreateObject("Scripting.Dictionary")
     Set refIDByEmail = CreateObject("Scripting.Dictionary")
-    LoadCouponMap wsM, couponByEmail, affiliateByEmail, refIDByEmail
+    Set refIDByCoupon = CreateObject("Scripting.Dictionary")
+    Set affiliateByCoupon = CreateObject("Scripting.Dictionary")
+    LoadCouponMap wsM, couponByEmail, affiliateByEmail, refIDByEmail, refIDByCoupon, affiliateByCoupon
 
     Dim dataStartRow As Long
     Dim colID As Long
@@ -418,9 +434,10 @@ Public Sub GenerateInfluencerReport()
     Dim colCurrency As Long
     Dim colRefundedDate As Long
     Dim colEmail As Long
+    Dim colCoupon As Long
     Dim colCustomerID As Long
     Dim colDisputeDate As Long
-    ResolvePaymentsLayout wsP, dataStartRow, colID, colCreated, colAmount, colRefundedAmount, colCurrency, colRefundedDate, colEmail, colCustomerID, colDisputeDate
+    ResolvePaymentsLayout wsP, dataStartRow, colID, colCreated, colAmount, colRefundedAmount, colCurrency, colRefundedDate, colEmail, colCoupon, colCustomerID, colDisputeDate
 
     Dim lastClearRow As Long
     lastClearRow = Application.Max(8, wsR.Cells(wsR.Rows.Count, 1).End(xlUp).Row, wsR.Cells(wsR.Rows.Count, 12).End(xlUp).Row)
@@ -463,6 +480,9 @@ Public Sub GenerateInfluencerReport()
         refundDate = Trim$(CStr(wsP.Cells(i, colRefundedDate).Value))
         disputeDate = Trim$(CStr(wsP.Cells(i, colDisputeDate).Value))
         custEmail = NormalizeEmail(wsP.Cells(i, colEmail).Value)
+        Dim paymentCoupon As String
+        paymentCoupon = vbNullString
+        If colCoupon > 0 Then paymentCoupon = Trim$(CStr(wsP.Cells(i, colCoupon).Value))
         customerUID = vbNullString
         If colCustomerID > 0 Then customerUID = Trim$(CStr(wsP.Cells(i, colCustomerID).Value))
 
@@ -476,8 +496,11 @@ Public Sub GenerateInfluencerReport()
         Dim affiliateName As String
         coupon = vbNullString
         affiliateName = vbNullString
-        If couponByEmail.Exists(custEmail) Then coupon = Trim$(CStr(couponByEmail(custEmail)))
+        If paymentCoupon <> vbNullString Then coupon = paymentCoupon
+        If coupon = vbNullString Then coupon = SingleCouponFilterValue(couponFilters)
+        If coupon = vbNullString And couponByEmail.Exists(custEmail) Then coupon = Trim$(CStr(couponByEmail(custEmail)))
         If affiliateByEmail.Exists(custEmail) Then affiliateName = Trim$(CStr(affiliateByEmail(custEmail)))
+        If affiliateName = vbNullString And affiliateByCoupon.Exists(UCase$(coupon)) Then affiliateName = Trim$(CStr(affiliateByCoupon(UCase$(coupon))))
         If Not CouponIsAllowed(coupon, couponFilters) Then GoTo NextPayment
 
         Dim rate As Double
@@ -1567,6 +1590,17 @@ Private Function BuildCouponFilter(ByVal filterText As String) As Object
     If dict.Count > 0 Then Set BuildCouponFilter = dict
 End Function
 
+Private Function SingleCouponFilterValue(ByVal couponFilters As Object) As String
+    If couponFilters Is Nothing Then Exit Function
+    If couponFilters.Count <> 1 Then Exit Function
+
+    Dim key As Variant
+    For Each key In couponFilters.Keys
+        SingleCouponFilterValue = CStr(key)
+        Exit Function
+    Next key
+End Function
+
 Private Function CouponIsAllowed(ByVal coupon As String, ByVal couponFilters As Object) As Boolean
     If couponFilters Is Nothing Then
         CouponIsAllowed = True
@@ -1575,19 +1609,47 @@ Private Function CouponIsAllowed(ByVal coupon As String, ByVal couponFilters As 
     End If
 End Function
 
-Private Sub LoadCouponMap(ByVal ws As Worksheet, ByVal couponByEmail As Object, ByVal affiliateByEmail As Object, Optional ByVal refIDByEmail As Object = Nothing)
+Private Sub LoadCouponMap(ByVal ws As Worksheet, _
+                          ByVal couponByEmail As Object, _
+                          ByVal affiliateByEmail As Object, _
+                          Optional ByVal refIDByEmail As Object = Nothing, _
+                          Optional ByVal refIDByCoupon As Object = Nothing, _
+                          Optional ByVal affiliateByCoupon As Object = Nothing)
     Dim lastRow As Long
     lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
 
     Dim i As Long
     For i = MAP_FIRST_ROW To lastRow
-        Dim email As String
-        email = NormalizeEmail(ws.Cells(i, 1).Value)
-        If email <> vbNullString Then
-            couponByEmail(email) = Trim$(CStr(ws.Cells(i, 2).Value))
-            affiliateByEmail(email) = Trim$(CStr(ws.Cells(i, 3).Value))
-            If Not refIDByEmail Is Nothing Then refIDByEmail(email) = Trim$(CStr(ws.Cells(i, 4).Value))
+        Dim firstCol As String
+        Dim coupon As String
+        Dim affiliateName As String
+        Dim fpRefID As String
+
+        firstCol = Trim$(CStr(ws.Cells(i, 1).Value))
+        coupon = Trim$(CStr(ws.Cells(i, 2).Value))
+        affiliateName = Trim$(CStr(ws.Cells(i, 3).Value))
+        fpRefID = Trim$(CStr(ws.Cells(i, 4).Value))
+
+        If firstCol = vbNullString And coupon = vbNullString Then GoTo NextMapRow
+
+        If InStr(1, firstCol, "@", vbTextCompare) > 0 Then
+            Dim email As String
+            email = NormalizeEmail(firstCol)
+            If email <> vbNullString Then
+                couponByEmail(email) = coupon
+                affiliateByEmail(email) = affiliateName
+                If Not refIDByEmail Is Nothing Then refIDByEmail(email) = fpRefID
+            End If
+        Else
+            ' New compact layout: A = FP Ref ID, B = Coupon, C = Affiliate (optional).
+            If coupon <> vbNullString Then
+                If fpRefID = vbNullString Then fpRefID = firstCol
+                If Not refIDByCoupon Is Nothing Then refIDByCoupon(UCase$(coupon)) = fpRefID
+                If Not affiliateByCoupon Is Nothing Then affiliateByCoupon(UCase$(coupon)) = affiliateName
+            End If
         End If
+
+NextMapRow:
     Next i
 End Sub
 
@@ -1600,6 +1662,7 @@ Private Sub ResolvePaymentsLayout(ByVal ws As Worksheet, _
                                   ByRef colCurrency As Long, _
                                   ByRef colRefundedDate As Long, _
                                   ByRef colEmail As Long, _
+                                  ByRef colCoupon As Long, _
                                   ByRef colCustomerID As Long, _
                                   ByRef colDisputeDate As Long)
     Dim headerRow As Long
@@ -1611,6 +1674,7 @@ Private Sub ResolvePaymentsLayout(ByVal ws As Worksheet, _
         colCurrency = FindHeaderColumnInRow(ws, headerRow, "Converted Currency")
         colRefundedDate = FindHeaderColumnInRow(ws, headerRow, "Refunded date UTC")
         colEmail = FindHeaderColumnInRow(ws, headerRow, "Customer Email")
+        colCoupon = FindFirstHeaderColumnInRow(ws, headerRow, Array("Coupon", "Coupon Code", "Promo Code", "Promotion Code", "Discount Code"))
         colCustomerID = FindFirstHeaderColumnInRow(ws, headerRow, Array("Customer ID", "Customer Id", "Customer", "Stripe Customer ID", "Stripe Customer Id"))
         colDisputeDate = FindHeaderColumnInRow(ws, headerRow, "Dispute Date UTC")
 
@@ -1630,6 +1694,7 @@ Private Sub ResolvePaymentsLayout(ByVal ws As Worksheet, _
     colCurrency = 5
     colRefundedDate = 6
     colEmail = 7
+    colCoupon = 0 ' Optional coupon column; detected by header when present.
     colCustomerID = 9 ' Optional Stripe customer id in column I.
     colDisputeDate = 8
 End Sub

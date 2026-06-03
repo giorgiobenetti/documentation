@@ -165,16 +165,17 @@ La commissione calcolata e solo reportistica: non crea commissioni o payout in F
 
 ### `Coupon_Map`
 
-Layout dalla riga 4:
+Nuovo layout rapido dalla riga 4:
 
 | Colonna | Campo |
 | --- | --- |
-| A | Customer Email |
+| A | FirstPromoter Ref ID / referral link token, es. `be20` |
 | B | Coupon / promo code usato dal cliente, es. `SCATTA10` |
-| C | Affiliate / influencer name |
-| D | FirstPromoter Ref ID / referral link token, es. `be20` |
+| C | Affiliate / influencer name, opzionale |
 
-La colonna D e importante quando il coupon non coincide con il referral link token. Esempio: se in FirstPromoter il referral link token e `be20` e i tracking coupon sono `SCATTA10`, `SCATTA5`, `BE30`, allora in colonna B metti il coupon specifico e in colonna D metti sempre `be20`.
+Esempio: se in FirstPromoter il referral link token e `be20` e i tracking coupon sono `SCATTA10`, `SCATTA5`, `BE30`, allora inserisci una riga per ogni coupon con colonna A = `be20` e colonna B = coupon.
+
+Il vecchio layout per email (`A = Customer Email`, `B = Coupon`, `C = Affiliate`, `D = FP Ref ID`) resta supportato, ma non e piu necessario se lavori per coupon.
 
 ### `Payments`
 
@@ -191,10 +192,11 @@ Il modulo cerca le intestazioni nelle prime 10 righe. Se non le trova, usa il la
 | G | `Customer Email` |
 | H | `Dispute Date UTC` |
 | I/opzionale | `Customer ID`, `Customer`, oppure `Stripe Customer ID` per inviare `uid` a FirstPromoter e alimentare il report |
+| opzionale | `Coupon`, `Coupon Code`, `Promo Code`, `Promotion Code`, oppure `Discount Code` se il CSV Stripe contiene gia il coupon |
 
 ### `Filter_Output`
 
-- `B4`: lista coupon separati da virgola, punto e virgola o nuova riga.
+- `B4`: lista coupon separati da virgola, punto e virgola o nuova riga. Se inserisci un solo coupon e `Payments` non ha una colonna coupon, quel coupon viene assegnato a tutte le righe filtrate.
 - `B5:D5`: intervallo `Already Paid`.
 - `B6:D6`: intervallo `To Be Paid`.
 - Output dalla riga 11, colonne `A:M`; la colonna `K` viene usata come stato importazione (`No`, `Referral Imported`, `Referral Exists`, `Referral Error`); la colonna `L` contiene lo Stripe Customer ID / `uid`; la colonna `M` contiene il FirstPromoter Ref ID effettivo.
