@@ -34,7 +34,7 @@ Private Const SHEET_FP_IMPORT_LOG As String = "FP_Import_Log"
 Private Const SHEET_FP_DEBUG_LOG As String = "FP_Debug_Log"
 Private Const SHEET_INFLUENCER_REPORT As String = "Influencer_Report"
 
-Private Const OUTPUT_FIRST_ROW As Long = 11
+Private Const OUTPUT_FIRST_ROW As Long = 12
 Private Const MAP_FIRST_ROW As Long = 4
 Private Const RATES_FIRST_ROW As Long = 4
 
@@ -197,7 +197,7 @@ Public Sub GenerateOutput()
     Set wsM = GetToolWorksheet(SHEET_COUPON_MAP)
 
     Dim couponFilter As String
-    couponFilter = Trim$(CStr(wsO.Range("B4").Value))
+    couponFilter = Trim$(CStr(wsO.Range("B5").Value))
 
     Dim paidFrom As Date
     Dim paidTo As Date
@@ -206,8 +206,8 @@ Public Sub GenerateOutput()
     Dim hasPaidFilter As Boolean
     Dim hasTobePaidFilter As Boolean
 
-    hasPaidFilter = HasDateRange(wsO.Range("B5").Value, wsO.Range("D5").Value, paidFrom, paidTo)
-    hasTobePaidFilter = HasDateRange(wsO.Range("B6").Value, wsO.Range("D6").Value, tobePaidFrom, tobePaidTo)
+    hasPaidFilter = HasDateRange(wsO.Range("B6").Value, wsO.Range("D6").Value, paidFrom, paidTo)
+    hasTobePaidFilter = HasDateRange(wsO.Range("B7").Value, wsO.Range("D7").Value, tobePaidFrom, tobePaidTo)
 
     If couponFilter = vbNullString And Not hasPaidFilter And Not hasTobePaidFilter Then
         MsgBox "Please enter at least one filter (coupon or date range).", vbExclamation
@@ -217,12 +217,15 @@ Public Sub GenerateOutput()
     If hasPaidFilter And hasTobePaidFilter Then
         If DateRangesOverlap(paidFrom, paidTo, tobePaidFrom, tobePaidTo) Then
             Err.Raise vbObjectError + 1303, "GenerateOutput", _
-                "Paid and To Be Paid date ranges overlap. Fix Filter_Output B5:D5 and B6:D6 before generating output."
+                "Paid and To Be Paid date ranges overlap. Fix Filter_Output B6:D6 and B7:D7 before generating output."
         End If
     End If
 
     Dim couponFilters As Object
     Set couponFilters = BuildCouponFilter(couponFilter)
+
+    Dim defaultFPRefID As String
+    defaultFPRefID = Trim$(CStr(wsO.Range("B4").Value))
 
     Dim couponByEmail As Object
     Dim affiliateByEmail As Object
@@ -310,6 +313,7 @@ Public Sub GenerateOutput()
         If affiliateName = vbNullString And affiliateByCoupon.Exists(UCase$(coupon)) Then affiliateName = CStr(affiliateByCoupon(UCase$(coupon)))
         If refIDByEmail.Exists(custEmail) Then fpRefID = CStr(refIDByEmail(custEmail))
         If refIDByCoupon.Exists(UCase$(coupon)) Then fpRefID = CStr(refIDByCoupon(UCase$(coupon)))
+        If defaultFPRefID <> vbNullString Then fpRefID = defaultFPRefID
         If fpRefID = vbNullString Then fpRefID = coupon
 
         If Not CouponIsAllowed(coupon, couponFilters) Then GoTo NextPaymentRow

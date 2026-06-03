@@ -124,7 +124,7 @@ Per ogni referral importato il modulo invia:
 - `created_at` = data storica del pagamento/riga;
 - `uid` = Stripe Customer ID (`cus_...`) dalla colonna L di `Filter_Output`;
 - `promo_code` = coupon dalla colonna D;
-- `ref_id` = FirstPromoter referral link token dalla colonna M. Se colonna M e vuota, usa il coupon come fallback.
+- `ref_id` = FirstPromoter referral link token da `Filter_Output!B4`; se `B4` e vuota usa la colonna M o il coupon come fallback.
 
 Questo consente a FirstPromoter di associare il cliente storico al promoter senza creare commissioni passate. I rinnovi futuri dovranno arrivare a FirstPromoter con lo stesso `uid`.
 
@@ -196,7 +196,8 @@ Il modulo cerca le intestazioni nelle prime 10 righe. Se non le trova, usa il la
 
 ### `Filter_Output`
 
-- `B4`: lista coupon separati da virgola, punto e virgola o nuova riga. Se inserisci un solo coupon e `Payments` non ha una colonna coupon, quel coupon viene assegnato a tutte le righe filtrate.
-- `B5:D5`: intervallo `Already Paid`.
-- `B6:D6`: intervallo `To Be Paid`.
-- Output dalla riga 11, colonne `A:M`; la colonna `K` viene usata come stato importazione (`No`, `Referral Imported`, `Referral Exists`, `Referral Error`); la colonna `L` contiene lo Stripe Customer ID / `uid`; la colonna `M` contiene il FirstPromoter Ref ID effettivo.
+- `B4`: FirstPromoter Ref ID / referral link token globale, es. `be20`.
+- `B5`: lista coupon separati da virgola, punto e virgola o nuova riga, es. `SCATTA10, SCATTA5`. Se inserisci un solo coupon e `Payments` non ha una colonna coupon, quel coupon viene assegnato a tutte le righe filtrate.
+- `B6:D6`: intervallo `Already Paid`.
+- `B7:D7`: intervallo `To Be Paid`.
+- Output dalla riga 12, colonne `A:M`; la colonna `K` viene usata come stato importazione (`No`, `Referral Imported`, `Referral Exists`, `Referral Error`); la colonna `L` contiene lo Stripe Customer ID / `uid`; la colonna `M` contiene il FirstPromoter Ref ID effettivo usato per l'import.
