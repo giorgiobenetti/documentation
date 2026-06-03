@@ -37,6 +37,8 @@ Private Const CM_DESC As Integer = 6
 Private Const CM_CCY As Integer = 7
 Private Const CM_PNL As Integer = 8
 Private Const CM_GSHEET As Integer = 9
+Private Const CM_META_LABEL As Integer = 11
+Private Const CM_META_VALUE As Integer = 12
 
 Function IsCashMovement(summaryVal As String) As Boolean
     Dim s As String: s = LCase$(Trim$(summaryVal))
@@ -244,6 +246,58 @@ Private Sub ScriviRiassuntoCashMovements(ws As Worksheet, ByVal lastDataRow As L
     ws.Range(ws.Cells(rStart, 1), ws.Cells(rStart + 5, 1)).Font.Bold = True
 End Sub
 
+Private Function ColonnaExcelLetter(ws As Worksheet, ByVal colNum As Long) As String
+    ColonnaExcelLetter = Split(ws.Cells(1, colNum).Address(True, False), "$")(0)
+End Function
+
+Private Sub ScriviInfoCashMovements(ws As Worksheet, wsLedger As Worksheet, ByVal cnt As Long, ByVal dupes As Long, ByVal skipped As Long, cols As LedgerMap)
+    ws.Range(ws.Cells(1, CM_META_LABEL), ws.Cells(40, CM_META_VALUE + 2)).ClearContents
+    ws.Range(ws.Cells(1, CM_META_LABEL), ws.Cells(1, CM_META_VALUE)).Merge
+    ws.Cells(1, CM_META_LABEL).Value = "Controllo import (ledger)"
+    ws.Cells(1, CM_META_LABEL).Font.Bold = True
+    Dim r As Long
+    r = 2
+    ws.Cells(r, CM_META_LABEL).Value = "Righe cash"
+    ws.Cells(r, CM_META_VALUE).Value = cnt
+    r = r + 1
+    ws.Cells(r, CM_META_LABEL).Value = "Col. Summary (ledger)"
+    ws.Cells(r, CM_META_VALUE).Value = cols.Summary
+    r = r + 1
+    ws.Cells(r, CM_META_LABEL).Value = "Col. P/L (ledger)"
+    ws.Cells(r, CM_META_VALUE).Value = cols.Pnl
+    r = r + 1
+    ws.Cells(r, CM_META_LABEL).Value = "Col. Trans Ref (ledger)"
+    ws.Cells(r, CM_META_VALUE).Value = cols.TransRef
+    r = r + 1
+    ws.Cells(r, CM_META_LABEL).Value = "Col. Time"
+    ws.Cells(r, CM_META_VALUE).Value = cols.Time
+    r = r + 1
+    ws.Cells(r, CM_META_LABEL).Value = "Col. Account"
+    ws.Cells(r, CM_META_VALUE).Value = cols.AccountId
+    r = r + 1
+    ws.Cells(r, CM_META_LABEL).Value = "Duplicati ignorati"
+    ws.Cells(r, CM_META_VALUE).Value = dupes
+    r = r + 1
+    ws.Cells(r, CM_META_LABEL).Value = "Righe escluse (non cash)"
+    ws.Cells(r, CM_META_VALUE).Value = skipped
+    r = r + 2
+    ws.Cells(r, CM_META_LABEL).Value = "Intestazioni Ledger_History (riga 1)"
+    ws.Cells(r, CM_META_LABEL).Font.Bold = True
+    r = r + 1
+    ws.Cells(r, CM_META_LABEL).Value = "Col"
+    ws.Cells(r, CM_META_VALUE).Value = "Intestazione"
+    ws.Cells(r, CM_META_LABEL).Font.Bold = True
+    ws.Cells(r, CM_META_VALUE).Font.Bold = True
+    Dim c As Long
+    For c = 1 To 14
+        r = r + 1
+        ws.Cells(r, CM_META_LABEL).Value = ColonnaExcelLetter(c)
+        ws.Cells(r, CM_META_VALUE).Value = LedgerTextVal(wsLedger.Cells(1, c).Value)
+    Next c
+    ws.Columns(CM_META_LABEL).AutoFit
+    ws.Columns(CM_META_VALUE).AutoFit
+End Sub
+
 Private Function GetRateCached(ByVal ccy As String, wsFX As Worksheet, ByVal tDate As Date, ByRef dct As Object) As Double
     Dim ky As String
     ky = UCase$(Trim$(ccy)) & "|" & Format$(tDate, "yyyymmdd")
@@ -407,15 +461,12 @@ NextL:
         wsCash.Range("A2:I" & (1 + cnt)).Sort Key1:=wsCash.Range("A2"), Order1:=xlAscending, Header:=xlNo
     End If
     ScriviRiassuntoCashMovements wsCash, 1 + cnt
-    wsCash.Columns.AutoFit
+    ScriviInfoCashMovements wsCash, wsLedger, cnt, dupes, skipped, cols
+    wsCash.Columns("A:L").AutoFit
     wsCash.Activate
-    If cnt > 0 Then wsCash.Cells(2, 1).Select
+    wsCash.Cells(1, CM_META_LABEL).Select
     Application.ScreenUpdating = True
-    MsgBox "Cash Movements ricostruito." & vbCrLf & _
-           "Righe cash: " & cnt & vbCrLf & _
-           "Colonne ledger -> Summary=" & cols.Summary & " P/L=" & cols.Pnl & " Ref=" & cols.TransRef & vbCrLf & _
-           "Duplicati ignorati: " & dupes & vbCrLf & _
-           "Righe ledger escluse (non cash): " & skipped, vbInformation
+    MsgBox "Cash Movements aggiornato. Controlla colonne K-L per riepilogo e intestazioni ledger.", vbInformation
 End Sub
 
 Sub CalcolaVolumi_Direct_USD()
