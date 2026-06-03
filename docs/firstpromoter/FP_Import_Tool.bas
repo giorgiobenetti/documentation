@@ -19,6 +19,9 @@ Private Const FP_IMPORT_ALREADY_PAID As Boolean = True
 Private Const FP_TRACK_URL_V1 As String = "https://firstpromoter.com/api/v1/track/sale"
 Private Const FP_TRACK_URL_V2 As String = "https://api.firstpromoter.com/api/v2/track/sale"
 Private Const FP_SIGNUP_URL_V2 As String = "https://api.firstpromoter.com/api/v2/track/signup"
+Private Const FP_SIGNUP_DELAY_MS As Long = 2500
+Private Const FP_RATE_LIMIT_MAX_RETRIES As Long = 5
+Private Const FP_RATE_LIMIT_BASE_WAIT_MS As Long = 15000
 Private Const FP_LEAD_UPDATE_URL_V1 As String = "https://firstpromoter.com/api/v1/leads/update"
 Private Const FP_COMMISSIONS_URL_V2 As String = "https://api.firstpromoter.com/api/v2/company/commissions"
 Private Const ECB_URL As String = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?format=csvdata&startPeriod=2023-05-01"
@@ -658,7 +661,7 @@ Public Sub SendToFirstPromoter()
                 errorCount = errorCount + 1
         End Select
 
-        SleepMs 300
+        SleepMs FP_SIGNUP_DELAY_MS
         GoTo RowComplete
 
 RowFailed:
@@ -1172,6 +1175,32 @@ Private Sub PostFirstPromoterSignup(ByVal jsonPayload As String, _
                                       ByVal apiKey As String, _
                                       ByRef fpStatus As Long, _
                                       ByRef fpResponse As String)
+    Dim attempt As Long
+    Dim waitMs As Long
+
+    For attempt = 0 To FP_RATE_LIMIT_MAX_RETRIES
+        Call PostFirstPromoterSignupOnce(jsonPayload, apiKey, fpStatus, fpResponse)
+
+        If fpStatus <> 429 Then
+            Application.StatusBar = False
+            Exit Sub
+        End If
+
+        If attempt < FP_RATE_LIMIT_MAX_RETRIES Then
+            waitMs = FP_RATE_LIMIT_BASE_WAIT_MS * (attempt + 1)
+            Application.StatusBar = "FirstPromoter rate limit (429). Waiting " & Format$(waitMs / 1000, "0") & " seconds before retry " & (attempt + 1) & "..."
+            SleepMs waitMs
+        End If
+    Next attempt
+
+    fpResponse = "Rate limit persisted after " & (FP_RATE_LIMIT_MAX_RETRIES + 1) & " attempts. Last response: " & fpResponse
+    Application.StatusBar = False
+End Sub
+
+Private Sub PostFirstPromoterSignupOnce(ByVal jsonPayload As String, _
+                                          ByVal apiKey As String, _
+                                          ByRef fpStatus As Long, _
+                                          ByRef fpResponse As String)
     On Error GoTo RequestFailed
 
     ' Dedicated, Postman-equivalent request for referral-only imports.

@@ -127,6 +127,17 @@ Per ogni referral importato il modulo invia:
 Questo consente a FirstPromoter di associare il cliente storico al promoter senza creare commissioni passate. I rinnovi futuri dovranno arrivare a FirstPromoter con lo stesso `uid`.
 
 
+
+### Rate limit FirstPromoter
+
+Se il log mostra `HTTP 429` con `error code: 1015`, FirstPromoter/Cloudflare sta limitando la velocita delle richieste. Il modulo ora:
+
+- aspetta `FP_SIGNUP_DELAY_MS` millisecondi tra una signup e l'altra;
+- su `429` riprova fino a `FP_RATE_LIMIT_MAX_RETRIES` volte;
+- usa attese crescenti basate su `FP_RATE_LIMIT_BASE_WAIT_MS`.
+
+Se hai molti referral da importare e vedi ancora 429, aumenta `FP_SIGNUP_DELAY_MS` a `5000` o `10000`.
+
 ## Report influencer interno
 
 Dato che FirstPromoter consiglia di non importare vendite/commissioni storiche, il modulo include `GenerateInfluencerReport` per produrre un report interno da inviare o usare per riconciliare gli influencer.
