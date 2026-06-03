@@ -27,6 +27,18 @@ Private Const CP_PNL As Integer = 17
 Private Const CP_CCY As Integer = 18
 Private Const CP_DEAL_ID As Integer = 8
 
+Private Const CM_COLS As Integer = 10
+Private Const CM_TIME As Integer = 1
+Private Const CM_ACCOUNT As Integer = 2
+Private Const CM_NAME As Integer = 3
+Private Const CM_TYPE As Integer = 4
+Private Const CM_TRANS_REF As Integer = 5
+Private Const CM_SUMMARY As Integer = 6
+Private Const CM_DESC As Integer = 7
+Private Const CM_CCY As Integer = 8
+Private Const CM_PNL As Integer = 9
+Private Const CM_GSHEET As Integer = 10
+
 Function IsCashMovement(summaryVal As String) As Boolean
     Dim s As String: s = LCase$(Trim$(summaryVal))
     IsCashMovement = (InStr(s, "cash") > 0 Or InStr(s, "internal") > 0 Or InStr(s, "inter account") > 0)
@@ -65,9 +77,42 @@ Private Function NormalizzaTimeCash(val As Variant) As String
     On Error GoTo 0
 End Function
 
-Private Function ChiaveCashMovement(ByVal accountId As String, ByVal timeVal As Variant, ByVal importo As Double) As String
-    ChiaveCashMovement = Trim$(accountId) & "|" & NormalizzaTimeCash(timeVal) & "|" & Format$(importo, "0.00########")
+Private Function ChiaveCashMovement(ByVal transRef As String, ByVal accountId As String, ByVal timeVal As Variant, ByVal importo As Double) As String
+    Dim ref As String
+    ref = Trim$(transRef)
+    If ref <> "" And ref <> "-" Then
+        ChiaveCashMovement = ref
+    Else
+        ChiaveCashMovement = Trim$(accountId) & "|" & NormalizzaTimeCash(timeVal) & "|" & Format$(importo, "0.00########")
+    End If
 End Function
+
+Private Sub MigraCashMovementsLayout10Col(ws As Worksheet)
+    If Trim$(CStr(ws.Cells(1, CM_TRANS_REF).Value)) = "Trans Ref" Then Exit Sub
+    If Trim$(CStr(ws.Cells(1, CM_TRANS_REF).Value)) <> "Summary" Then Exit Sub
+    If Trim$(CStr(ws.Cells(1, CM_GSHEET - 1).Value)) <> "GSheet" Then Exit Sub
+    RimuoviRiassuntoCashMovements ws
+    Dim lastR As Long
+    lastR = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    If lastR < 2 Then Exit Sub
+    Dim oldData As Variant
+    oldData = ws.Range(ws.Cells(2, 1), ws.Cells(lastR, CM_GSHEET - 1)).Value2
+    ws.Range(ws.Cells(2, 1), ws.Cells(lastR, CM_GSHEET - 1)).ClearContents
+    Dim i As Long, w As Long
+    For i = 1 To UBound(oldData, 1)
+        w = i + 1
+        ws.Cells(w, CM_TIME).Value = oldData(i, 1)
+        ws.Cells(w, CM_ACCOUNT).Value = oldData(i, 2)
+        ws.Cells(w, CM_NAME).Value = oldData(i, 3)
+        ws.Cells(w, CM_TYPE).Value = oldData(i, 4)
+        ws.Cells(w, CM_TRANS_REF).Value = ""
+        ws.Cells(w, CM_SUMMARY).Value = oldData(i, 5)
+        ws.Cells(w, CM_DESC).Value = oldData(i, 6)
+        ws.Cells(w, CM_CCY).Value = oldData(i, 7)
+        ws.Cells(w, CM_PNL).Value = oldData(i, 8)
+        ws.Cells(w, CM_GSHEET).Value = oldData(i, 9)
+    Next i
+End Sub
 
 Private Const CASH_SUMMARY_MARKER As String = "RIASSUNTO"
 
@@ -75,7 +120,7 @@ Private Sub RimuoviRiassuntoCashMovements(ws As Worksheet)
     Dim r As Long
     For r = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row To 2 Step -1
         If Trim$(CStr(ws.Cells(r, 1).Value)) = CASH_SUMMARY_MARKER Then
-            ws.Range(ws.Cells(r, 1), ws.Cells(ws.Rows.Count, 9)).Clear
+            ws.Range(ws.Cells(r, 1), ws.Cells(ws.Rows.Count, CM_COLS)).Clear
             Exit Sub
         End If
     Next r
@@ -84,13 +129,13 @@ End Sub
 Private Sub ScriviRiassuntoCashMovements(ws As Worksheet, ByVal lastDataRow As Long)
     If lastDataRow < 2 Then Exit Sub
     Dim data As Variant
-    data = ws.Range(ws.Cells(2, 1), ws.Cells(lastDataRow, 9)).Value2
+    data = ws.Range(ws.Cells(2, 1), ws.Cells(lastDataRow, CM_COLS)).Value2
     Dim totVers As Double, totPrel As Double
     Dim nVers As Long, nPrel As Long
     Dim i As Long, tipo As String, amt As Double
     For i = 1 To UBound(data, 1)
-        tipo = Trim$(CStr(data(i, 4)))
-        amt = CDbl(SafeVal(data(i, 8)))
+        tipo = Trim$(CStr(data(i, CM_TYPE)))
+        amt = CDbl(SafeVal(data(i, CM_PNL)))
         Select Case tipo
             Case "Cash In"
                 totVers = totVers + amt
@@ -108,29 +153,29 @@ Private Sub ScriviRiassuntoCashMovements(ws As Worksheet, ByVal lastDataRow As L
     ws.Cells(r0, 1).Font.Bold = True
     r0 = r0 + 1
     ws.Cells(r0, 1).Value = "Totale versamenti"
-    ws.Cells(r0, 8).Value = totVers
-    ws.Cells(r0, 9).Value = totVers
+    ws.Cells(r0, CM_PNL).Value = totVers
+    ws.Cells(r0, CM_GSHEET).Value = totVers
     r0 = r0 + 1
     ws.Cells(r0, 1).Value = "Totale prelievi"
-    ws.Cells(r0, 8).Value = Abs(totPrel)
-    ws.Cells(r0, 9).Value = Abs(totPrel)
+    ws.Cells(r0, CM_PNL).Value = Abs(totPrel)
+    ws.Cells(r0, CM_GSHEET).Value = Abs(totPrel)
     r0 = r0 + 1
     ws.Cells(r0, 1).Value = "N° versamenti"
-    ws.Cells(r0, 8).Value = nVers
+    ws.Cells(r0, CM_PNL).Value = nVers
     r0 = r0 + 1
     ws.Cells(r0, 1).Value = "N° prelievi"
-    ws.Cells(r0, 8).Value = nPrel
+    ws.Cells(r0, CM_PNL).Value = nPrel
     r0 = r0 + 1
     ws.Cells(r0, 1).Value = "Saldo (versamenti - prelievi)"
-    ws.Cells(r0, 8).Value = saldo
-    ws.Cells(r0, 9).Value = saldo
+    ws.Cells(r0, CM_PNL).Value = saldo
+    ws.Cells(r0, CM_GSHEET).Value = saldo
     Dim rStart As Long
     rStart = lastDataRow + 3
-    ws.Range(ws.Cells(rStart + 1, 8), ws.Cells(rStart + 2, 9)).NumberFormat = "[$€-410]#,##0.00"
-    ws.Range(ws.Cells(rStart + 1, 9), ws.Cells(rStart + 2, 9)).NumberFormat = "[$-409]0.00"
-    ws.Range(ws.Cells(rStart + 3, 8), ws.Cells(rStart + 4, 8)).NumberFormat = "0"
-    ws.Range(ws.Cells(rStart + 5, 8), ws.Cells(rStart + 5, 9)).NumberFormat = "[$€-410]#,##0.00"
-    ws.Cells(rStart + 5, 9).NumberFormat = "[$-409]0.00"
+    ws.Range(ws.Cells(rStart + 1, CM_PNL), ws.Cells(rStart + 2, CM_GSHEET)).NumberFormat = "[$€-410]#,##0.00"
+    ws.Range(ws.Cells(rStart + 1, CM_GSHEET), ws.Cells(rStart + 2, CM_GSHEET)).NumberFormat = "[$-409]0.00"
+    ws.Range(ws.Cells(rStart + 3, CM_PNL), ws.Cells(rStart + 4, CM_PNL)).NumberFormat = "0"
+    ws.Range(ws.Cells(rStart + 5, CM_PNL), ws.Cells(rStart + 5, CM_GSHEET)).NumberFormat = "[$€-410]#,##0.00"
+    ws.Cells(rStart + 5, CM_GSHEET).NumberFormat = "[$-409]0.00"
     ws.Range(ws.Cells(rStart, 1), ws.Cells(rStart + 5, 1)).Font.Bold = True
 End Sub
 
@@ -189,27 +234,29 @@ Sub AggiornaCashMovements()
     End If
     Dim wsLedger As Worksheet: Set wsLedger = ThisWorkbook.Sheets("Ledger_History")
     Dim wsCash As Worksheet: Set wsCash = GetOrCreateSheet("Cash_Movements")
-    wsCash.Cells(1, 1).Value = "Time"
-    wsCash.Cells(1, 2).Value = "Account ID"
-    wsCash.Cells(1, 3).Value = "Name"
-    wsCash.Cells(1, 4).Value = "Transaction Type"
-    wsCash.Cells(1, 5).Value = "Summary"
-    wsCash.Cells(1, 6).Value = "Description"
-    wsCash.Cells(1, 7).Value = "Ccy"
-    wsCash.Cells(1, 8).Value = "Profit/Loss"
-    wsCash.Cells(1, 9).Value = "GSheet"
+    MigraCashMovementsLayout10Col wsCash
+    wsCash.Cells(1, CM_TIME).Value = "Time"
+    wsCash.Cells(1, CM_ACCOUNT).Value = "Account ID"
+    wsCash.Cells(1, CM_NAME).Value = "Name"
+    wsCash.Cells(1, CM_TYPE).Value = "Transaction Type"
+    wsCash.Cells(1, CM_TRANS_REF).Value = "Trans Ref"
+    wsCash.Cells(1, CM_SUMMARY).Value = "Summary"
+    wsCash.Cells(1, CM_DESC).Value = "Description"
+    wsCash.Cells(1, CM_CCY).Value = "Ccy"
+    wsCash.Cells(1, CM_PNL).Value = "Profit/Loss"
+    wsCash.Cells(1, CM_GSHEET).Value = "GSheet"
     wsCash.Rows(1).Font.Bold = True
     RimuoviRiassuntoCashMovements wsCash
     Dim dictChiavi As Object: Set dictChiavi = CreateObject("Scripting.Dictionary")
     Dim lastRowCash As Long: lastRowCash = wsCash.Cells(wsCash.Rows.Count, 1).End(xlUp).Row
     If lastRowCash > 1 Then
         Dim existData As Variant
-        existData = wsCash.Range(wsCash.Cells(2, 1), wsCash.Cells(lastRowCash, 9)).Value2
+        existData = wsCash.Range(wsCash.Cells(2, 1), wsCash.Cells(lastRowCash, CM_COLS)).Value2
         Dim ex As Long
         For ex = 1 To UBound(existData, 1)
             Dim chiaveEx As String
-            chiaveEx = ChiaveCashMovement(CStr(existData(ex, 2)), existData(ex, 1), CDbl(SafeVal(existData(ex, 8))))
-            If chiaveEx <> "||" Then dictChiavi(chiaveEx) = 1
+            chiaveEx = ChiaveCashMovement(CStr(existData(ex, CM_TRANS_REF)), CStr(existData(ex, CM_ACCOUNT)), existData(ex, CM_TIME), CDbl(SafeVal(existData(ex, CM_PNL))))
+            If chiaveEx <> "||" And chiaveEx <> "" Then dictChiavi(chiaveEx) = 1
         Next ex
     End If
     Dim lastRowL As Long: lastRowL = wsLedger.Cells(wsLedger.Rows.Count, 1).End(xlUp).Row
@@ -223,7 +270,7 @@ Sub AggiornaCashMovements()
     startWrite = wsCash.Cells(wsCash.Rows.Count, 1).End(xlUp).Row + 1
     Dim cap As Long: cap = 512
     Dim buf() As Variant
-    ReDim buf(1 To 9, 1 To cap)
+    ReDim buf(1 To CM_COLS, 1 To cap)
     Dim cnt As Long: cnt = 0
     Dim dupes As Long: dupes = 0
     Dim r As Long
@@ -235,7 +282,7 @@ Sub AggiornaCashMovements()
         Dim importo As Double
         importo = CDbl(SafeVal(led(r, LH_PNL)))
         Dim chiave As String
-        chiave = ChiaveCashMovement(CStr(led(r, LH_ACCOUNT_ID)), led(r, LH_TIME), importo)
+        chiave = ChiaveCashMovement(CStr(led(r, LH_TRANS_REF)), CStr(led(r, LH_ACCOUNT_ID)), led(r, LH_TIME), importo)
         If dictChiavi.Exists(chiave) Then
             dupes = dupes + 1
             GoTo NextL
@@ -243,34 +290,35 @@ Sub AggiornaCashMovements()
         cnt = cnt + 1
         If cnt > cap Then
             cap = cap * 2
-            ReDim Preserve buf(1 To 9, 1 To cap)
+            ReDim Preserve buf(1 To CM_COLS, 1 To cap)
         End If
-        buf(1, cnt) = led(r, LH_TIME)
-        buf(2, cnt) = Trim$(CStr(led(r, LH_ACCOUNT_ID)))
-        buf(3, cnt) = PulisciNomeCliente(CStr(led(r, LH_NAME)))
-        buf(4, cnt) = TipoCashMovement(summaryVal, importo)
-        buf(5, cnt) = summaryVal
-        buf(6, cnt) = Trim$(CStr(led(r, LH_DESCRIPTION)))
-        buf(7, cnt) = Trim$(CStr(led(r, LH_CCY)))
-        buf(8, cnt) = importo
-        buf(9, cnt) = importo
+        buf(CM_TIME, cnt) = led(r, LH_TIME)
+        buf(CM_ACCOUNT, cnt) = Trim$(CStr(led(r, LH_ACCOUNT_ID)))
+        buf(CM_NAME, cnt) = PulisciNomeCliente(CStr(led(r, LH_NAME)))
+        buf(CM_TYPE, cnt) = TipoCashMovement(summaryVal, importo)
+        buf(CM_TRANS_REF, cnt) = Trim$(CStr(led(r, LH_TRANS_REF)))
+        buf(CM_SUMMARY, cnt) = summaryVal
+        buf(CM_DESC, cnt) = Trim$(CStr(led(r, LH_DESCRIPTION)))
+        buf(CM_CCY, cnt) = Trim$(CStr(led(r, LH_CCY)))
+        buf(CM_PNL, cnt) = importo
+        buf(CM_GSHEET, cnt) = importo
         dictChiavi.Add chiave, 1
 NextL:
     Next r
     If cnt > 0 Then
-        ReDim Preserve buf(1 To 9, 1 To cnt)
+        ReDim Preserve buf(1 To CM_COLS, 1 To cnt)
         Dim out2D As Variant
         out2D = Application.WorksheetFunction.Transpose(buf)
-        wsCash.Range(wsCash.Cells(startWrite, 1), wsCash.Cells(startWrite + cnt - 1, 9)).Value2 = out2D
+        wsCash.Range(wsCash.Cells(startWrite, 1), wsCash.Cells(startWrite + cnt - 1, CM_COLS)).Value2 = out2D
         With wsCash.Range(wsCash.Cells(startWrite, 1), wsCash.Cells(startWrite + cnt - 1, 1))
             .NumberFormat = "dd/mm/yyyy hh:mm:ss"
         End With
-        wsCash.Range(wsCash.Cells(startWrite, 8), wsCash.Cells(startWrite + cnt - 1, 8)).NumberFormat = "[$€-410]#,##0.00"
-        wsCash.Range(wsCash.Cells(startWrite, 9), wsCash.Cells(startWrite + cnt - 1, 9)).NumberFormat = "[$-409]0.00"
+        wsCash.Range(wsCash.Cells(startWrite, CM_PNL), wsCash.Cells(startWrite + cnt - 1, CM_PNL)).NumberFormat = "[$€-410]#,##0.00"
+        wsCash.Range(wsCash.Cells(startWrite, CM_GSHEET), wsCash.Cells(startWrite + cnt - 1, CM_GSHEET)).NumberFormat = "[$-409]0.00"
     End If
     lastRowCash = wsCash.Cells(wsCash.Rows.Count, 1).End(xlUp).Row
     If lastRowCash > 2 Then
-        wsCash.Range("A1:I" & lastRowCash).Sort Key1:=wsCash.Range("A2"), Order1:=xlAscending, Header:=xlYes
+        wsCash.Range("A1:J" & lastRowCash).Sort Key1:=wsCash.Range("A2"), Order1:=xlAscending, Header:=xlYes
     End If
     ScriviRiassuntoCashMovements wsCash, lastRowCash
     wsCash.Columns.AutoFit
