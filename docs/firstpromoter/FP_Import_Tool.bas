@@ -286,9 +286,6 @@ Public Sub GenerateOutput()
         paymentCurrency = UCase$(Trim$(CStr(wsP.Cells(i, colCurrency).Value)))
         refundDate = Trim$(CStr(wsP.Cells(i, colRefundedDate).Value))
         custEmail = NormalizeEmail(wsP.Cells(i, colEmail).Value)
-        Dim paymentCoupon As String
-        paymentCoupon = vbNullString
-        If colCoupon > 0 Then paymentCoupon = Trim$(CStr(wsP.Cells(i, colCoupon).Value))
         Dim stripeCustomerID As String
         stripeCustomerID = vbNullString
         If colCustomerID > 0 Then stripeCustomerID = Trim$(CStr(wsP.Cells(i, colCustomerID).Value))
@@ -306,8 +303,7 @@ Public Sub GenerateOutput()
         affiliateName = vbNullString
         fpRefID = vbNullString
 
-        If paymentCoupon <> vbNullString Then coupon = paymentCoupon
-        If coupon = vbNullString And couponByEmail.Exists(custEmail) Then coupon = CStr(couponByEmail(custEmail))
+        If couponByEmail.Exists(custEmail) Then coupon = CStr(couponByEmail(custEmail))
         If affiliateByEmail.Exists(custEmail) Then affiliateName = CStr(affiliateByEmail(custEmail))
         If affiliateName = vbNullString And affiliateByCoupon.Exists(UCase$(coupon)) Then affiliateName = CStr(affiliateByCoupon(UCase$(coupon)))
         If refIDByEmail.Exists(custEmail) Then fpRefID = CStr(refIDByEmail(custEmail))
@@ -483,9 +479,6 @@ Public Sub GenerateInfluencerReport()
         refundDate = Trim$(CStr(wsP.Cells(i, colRefundedDate).Value))
         disputeDate = Trim$(CStr(wsP.Cells(i, colDisputeDate).Value))
         custEmail = NormalizeEmail(wsP.Cells(i, colEmail).Value)
-        Dim paymentCoupon As String
-        paymentCoupon = vbNullString
-        If colCoupon > 0 Then paymentCoupon = Trim$(CStr(wsP.Cells(i, colCoupon).Value))
         customerUID = vbNullString
         If colCustomerID > 0 Then customerUID = Trim$(CStr(wsP.Cells(i, colCustomerID).Value))
 
@@ -499,8 +492,7 @@ Public Sub GenerateInfluencerReport()
         Dim affiliateName As String
         coupon = vbNullString
         affiliateName = vbNullString
-        If paymentCoupon <> vbNullString Then coupon = paymentCoupon
-        If coupon = vbNullString And couponByEmail.Exists(custEmail) Then coupon = Trim$(CStr(couponByEmail(custEmail)))
+        If couponByEmail.Exists(custEmail) Then coupon = Trim$(CStr(couponByEmail(custEmail)))
         If affiliateByEmail.Exists(custEmail) Then affiliateName = Trim$(CStr(affiliateByEmail(custEmail)))
         If affiliateName = vbNullString And affiliateByCoupon.Exists(UCase$(coupon)) Then affiliateName = Trim$(CStr(affiliateByCoupon(UCase$(coupon))))
         If Not CouponIsAllowed(coupon, couponFilters) Then GoTo NextPayment

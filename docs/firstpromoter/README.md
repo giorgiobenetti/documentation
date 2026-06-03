@@ -165,6 +165,10 @@ La commissione calcolata e solo reportistica: non crea commissioni o payout in F
 
 ### `Coupon_Map`
 
+#### Ricerca per coupon
+
+Per generare l'output, la macro confronta `Payments[Customer Email]` con `Coupon_Map[Customer Email]`, recupera `Coupon_Map[Coupon Code]`, e poi applica il filtro `Filter_Output!B5`. Quindi con `B5 = SCATTA10` escono solo i pagamenti delle email presenti in `Coupon_Map` con `Coupon Code = SCATTA10`.
+
 Nuovo layout rapido dalla riga 4:
 
 | Colonna | Campo |
@@ -192,12 +196,11 @@ Il modulo cerca le intestazioni nelle prime 10 righe. Se non le trova, usa il la
 | G | `Customer Email` |
 | H | `Dispute Date UTC` |
 | I/opzionale | `Customer ID`, `Customer`, oppure `Stripe Customer ID` per inviare `uid` a FirstPromoter e alimentare il report |
-| opzionale | `Coupon`, `Coupon Code`, `Promo Code`, `Promotion Code`, oppure `Discount Code` se il CSV Stripe contiene gia il coupon |
 
 ### `Filter_Output`
 
 - `B4`: FirstPromoter Ref ID / referral link token globale, es. `be20`.
-- `B5`: lista coupon separati da virgola, punto e virgola o nuova riga, es. `SCATTA10, SCATTA5`. E solo un filtro: il coupon della riga deve arrivare da `Payments` o da `Coupon_Map`.
+- `B5`: lista coupon separati da virgola, punto e virgola o nuova riga, es. `SCATTA10, SCATTA5`. E solo un filtro: il coupon della riga viene preso da `Coupon_Map` tramite email cliente.
 - `B6:D6`: intervallo `Already Paid`.
 - `B7:D7`: intervallo `To Be Paid`.
 - Output dalla riga 12, colonne `A:M`; la colonna `K` viene usata come stato importazione (`No`, `Referral Imported`, `Referral Exists`, `Referral Error`); la colonna `L` contiene lo Stripe Customer ID / `uid`; la colonna `M` contiene il FirstPromoter Ref ID effettivo usato per l'import.
