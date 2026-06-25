@@ -25,6 +25,8 @@ input bool            ShowInfoPanel = true;
 input int             PanelX = 10;   // distanza dal bordo destro
 input int             PanelY = 12;   // distanza dal bordo basso
 input int             PanelFontSize = 10;
+input string          PanelFontName = "Arial";
+input bool            UseBoldText = true;
 input color           PanelTextColor = clrWhite;
 
 string g_prefix = "";
@@ -109,12 +111,16 @@ void DrawPanelLine(const string name, int x, int y, const string text, color c)
    if(ObjectFind(0, name) < 0)
       ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
 
+   string fontToUse = PanelFontName;
+   if(UseBoldText)
+      fontToUse = PanelFontName + " Bold";
+
    ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_RIGHT_LOWER);
    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, PanelFontSize);
    ObjectSetInteger(0, name, OBJPROP_COLOR, c);
-   ObjectSetString (0, name, OBJPROP_FONT, "Arial Bold");
+   ObjectSetString (0, name, OBJPROP_FONT, fontToUse);
    ObjectSetString (0, name, OBJPROP_TEXT, text);
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, false);
