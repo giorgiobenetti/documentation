@@ -1,45 +1,42 @@
-# Import Withdrawal Request (multi-mese)
+# Import Withdrawal Request — con pulsante
 
-Modulo VBA per importare un file `.xlsx` con un foglio per mese (es. `January 2026`) e produrre un output aggregato per **NAME**.
+## Setup (una volta sola)
 
-## Output (`Withdrawal_Output`)
+1. Apri Excel → crea un nuovo file e **salvalo come `.xlsm`** (Excel con macro).
+2. `Alt+F11` → **File → Importa file…** → `WithdrawalImport.bas`
+3. `Alt+F8` → esegui **`SetupWithdrawalImportButton`**
+4. Compare il foglio **Dashboard** con il pulsante **Importa Withdrawal Request**
+5. Salva il file `.xlsm`
+
+## Uso quotidiano
+
+1. Apri il tuo file `.xlsm`
+2. Foglio **Dashboard** → clic **Importa Withdrawal Request**
+3. Scegli il file sorgente `.xlsx` (fogli tipo `January 2026`)
+4. Seleziona i mesi: `1,2,3` oppure `1-6` (vuoto = tutti)
+5. Output nel foglio **`Withdrawal_Output`**
+
+## Colonne output
 
 | LOGIN | NAME | AMOUNT | PAYMENT DATE | TOTAL BALANCE |
-|-------|------|--------|--------------|---------------|
-| … | … | somma | data più recente | somma |
 
-- **AMOUNT** e **TOTAL BALANCE**: sommati per nome sui mesi selezionati.
-- **PAYMENT DATE**: la data più recente tra le righe dello stesso nome.
-- **LOGIN**: primo login non vuoto trovato per quel nome.
+Aggregato per **NAME** (somma importi; data pagamento più recente).
 
-## Regole di import
+## Regole
 
-- Si leggono solo i fogli il cui nome contiene un mese inglese + anno (es. `January 2026`).
-- Intestazioni cercate nella prima riga che contiene `LOGIN`, `NAME`, `AMOUNT` (prime ~25 righe).
-- **Escluse le righe evidenziate** (sfondo colorato su qualsiasi cella della riga).
-- Escluse righe con **NAME** vuoto.
+- Solo fogli con nome mese + anno (January … December + 20xx)
+- **Escluse righe evidenziate** (sfondo colorato)
+- Escluse righe senza NAME
 
-## Installazione nel file Excel di lavoro
+## File nel repo
 
-1. Apri il tuo file Excel destinazione (quello con il bottone).
-2. `Alt+F11` → **File → Importa file…** → seleziona `WithdrawalImport.bas`.
-3. Torna in Excel, foglio **Dashboard** (o dove preferisci):
-   - **Inserisci → Moduli → Pulsante** (o forma con assegnazione macro).
-   - Assegna la macro **`ImportWithdrawalRequests`**.
-   - Etichetta suggerita: `Importa Withdrawal Request`.
-4. **Debug → Compila VBAProject** (nessun errore).
+- Codice: `docs/vba/WithdrawalImport.bas`
+- Branch: `cursor/withdrawal-import-139a`
+- Link: https://github.com/giorgiobenetti/documentation/blob/cursor/withdrawal-import-139a/docs/vba/WithdrawalImport.bas
 
-## Utilizzo
+## Macro disponibili
 
-1. Clic sul pulsante **Importa Withdrawal Request**.
-2. Scegli il file sorgente `.xlsx`.
-3. Nella finestra **Seleziona mesi**:
-   - `1,2,3` = mesi 1, 2 e 3 dell’elenco
-   - `1-3` = stesso intervallo
-   - vuoto o `1-N` = tutti i mesi trovati
-4. Controlla il foglio **`Withdrawal_Output`**.
-
-## Note
-
-- Se una riga evidenziata viene contata per errore, in Excel il colore di sfondo deve essere “Nessun riempimento” sulle celle usate; righe grigie/chiare di formattazione condizionale vengono escluse.
-- Se le intestazioni del sorgente differiscono (es. typo `Counrty Office`), non influisce: si usano solo LOGIN, NAME, AMOUNT, Payment Date, Total Balance.
+| Macro | Cosa fa |
+|-------|---------|
+| `SetupWithdrawalImportButton` | Crea il pulsante (esegui 1 volta) |
+| `ImportWithdrawalRequests` | Import (la lancia il pulsante) |

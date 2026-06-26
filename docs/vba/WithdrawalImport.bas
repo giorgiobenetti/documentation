@@ -2,7 +2,8 @@ Attribute VB_Name = "WithdrawalImport"
 Option Explicit
 
 Private Const OUT_SHEET As String = "Withdrawal_Output"
-Private Const PICK_SHEET As String = "_MonthPick"
+Private Const DASHBOARD_SHEET As String = "Dashboard"
+Private Const BTN_IMPORT_NAME As String = "btnImportWithdrawal"
 
 Private Type WdrColumns
     Login As Long
@@ -124,15 +125,49 @@ Private Function CellText(v As Variant) As String
 End Function
 
 Private Sub CleanupPickSheet()
+    ' riservato
+End Sub
+
+Private Sub RimuoviPulsanteImport(ws As Worksheet)
+    Dim shp As Shape
+    On Error Resume Next
+    For Each shp In ws.Shapes
+        If shp.Name = BTN_IMPORT_NAME Then shp.Delete
+        If shp.Type = msoFormControl Then
+            If LCase$(shp.OnAction) = "importwithdrawalrequests" Then shp.Delete
+        End If
+    Next shp
+    On Error GoTo 0
+End Sub
+
+Public Sub SetupWithdrawalImportButton()
     Dim ws As Worksheet
     On Error Resume Next
-    Set ws = ThisWorkbook.Sheets(PICK_SHEET)
-    If Not ws Is Nothing Then
-        Application.DisplayAlerts = False
-        ws.Delete
-        Application.DisplayAlerts = True
-    End If
+    Set ws = ThisWorkbook.Sheets(DASHBOARD_SHEET)
     On Error GoTo 0
+    If ws Is Nothing Then
+        Set ws = ThisWorkbook.Worksheets.Add(Before:=ThisWorkbook.Sheets(1))
+        ws.Name = DASHBOARD_SHEET
+    End If
+    RimuoviPulsanteImport ws
+    ws.Cells(1, 1).Value = "Withdrawal Request — Import"
+    ws.Cells(2, 1).Value = "1) Clicca Importa e scegli il file xlsx" & vbCrLf & _
+                           "2) Seleziona i mesi (es. 1-3)" & vbCrLf & _
+                           "3) Risultato nel foglio Withdrawal_Output"
+    ws.Cells(1, 1).Font.Bold = True
+    ws.Cells(1, 1).Font.Size = 14
+    ws.Rows("1:2").EntireRow.AutoFit
+    Dim btn As Shape
+    Set btn = ws.Shapes.AddFormControl(xlButtonControl, 20, 55, 260, 40)
+    btn.Name = BTN_IMPORT_NAME
+    btn.OnAction = "ImportWithdrawalRequests"
+    btn.TextFrame.Characters.Text = "Importa Withdrawal Request"
+    btn.TextFrame.Characters.Font.Size = 11
+    ws.Activate
+    btn.Select
+    MsgBox "Pulsante creato sul foglio '" & DASHBOARD_SHEET & "'." & vbCrLf & vbCrLf & _
+           "Salva il file come .xlsm (con macro)." & vbCrLf & _
+           "Poi clicca 'Importa Withdrawal Request'.", vbInformation
 End Sub
 
 Private Function PickMonthSheets(wbSrc As Workbook) As Collection
