@@ -35,6 +35,7 @@ input color           TargetLineColor = clrDeepSkyBlue;
 input int             TargetLineWidth = 2;
 input ENUM_LINE_STYLE TargetLineStyle = STYLE_DASH;
 input bool            IncludeSwapCommissionInTarget = true;
+input color           TargetProfitPositiveColor = C'0,120,0'; // verde piu' scuro per leggibilita'
 
 string g_prefix = "";
 string g_buyLine = "";
@@ -385,7 +386,7 @@ void UpdateIndicator()
    string targetText = "TP line: N/A";
    if(hasTargetProjection)
    {
-      if(targetProfit > 0.0) targetColor = BuyLineColor;
+      if(targetProfit > 0.0) targetColor = TargetProfitPositiveColor;
       else if(targetProfit < 0.0) targetColor = SellLineColor;
       targetText =
          "TP@" + PriceFmt(targetPrice) +
