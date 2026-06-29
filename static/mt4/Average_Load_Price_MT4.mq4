@@ -29,14 +29,22 @@ input string          PanelFontName = "Arial";
 input bool            UseBoldText = true;
 input color           PanelTextColor = clrWhite;
 input double          MarginCallPercent = 50.0; // soglia margin call (% margine)
+input bool            ShowTargetLine = true;
+input double          TargetLinePrice = 0.0; // se 0 usa Bid iniziale
+input color           TargetLineColor = clrDeepSkyBlue;
+input int             TargetLineWidth = 2;
+input ENUM_LINE_STYLE TargetLineStyle = STYLE_DASH;
+input bool            IncludeSwapCommissionInTarget = true;
 
 string g_prefix = "";
 string g_buyLine = "";
 string g_sellLine = "";
+string g_targetLine = "";
 string g_info1 = "";
 string g_info2 = "";
 string g_info3 = "";
 string g_info4 = "";
+string g_info5 = "";
 
 bool IsMarketPosition(const int orderType)
 {
@@ -115,6 +123,37 @@ void EnsureHLine(const string name, double price, color c)
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, false);
+}
+
+void EnsureTargetLine(double &targetPrice)
+{
+   if(!ShowTargetLine)
+   {
+      DeleteIfExists(g_targetLine);
+      targetPrice = 0.0;
+      return;
+   }
+
+   bool created = false;
+   if(ObjectFind(0, g_targetLine) < 0)
+   {
+      double initialPrice = (TargetLinePrice > 0.0 ? TargetLinePrice : Bid);
+      ObjectCreate(0, g_targetLine, OBJ_HLINE, 0, 0, initialPrice);
+      created = true;
+   }
+
+   targetPrice = ObjectGetDouble(0, g_targetLine, OBJPROP_PRICE1);
+   if(targetPrice <= 0.0)
+      targetPrice = (TargetLinePrice > 0.0 ? TargetLinePrice : Bid);
+
+   ObjectSetDouble(0, g_targetLine, OBJPROP_PRICE1, targetPrice);
+   ObjectSetInteger(0, g_targetLine, OBJPROP_COLOR, TargetLineColor);
+   ObjectSetInteger(0, g_targetLine, OBJPROP_STYLE, TargetLineStyle);
+   ObjectSetInteger(0, g_targetLine, OBJPROP_WIDTH, MathMax(1, TargetLineWidth));
+   ObjectSetInteger(0, g_targetLine, OBJPROP_BACK, false);
+   ObjectSetInteger(0, g_targetLine, OBJPROP_SELECTABLE, true);
+    if(created) ObjectSetInteger(0, g_targetLine, OBJPROP_SELECTED, false);
+   ObjectSetInteger(0, g_targetLine, OBJPROP_HIDDEN, false);
 }
 
 void DrawPanelLine(const string name, int x, int y, const string text, color c)
@@ -204,6 +243,52 @@ string MarginCallPriceText(double buyLots, double sellLots)
    );
 }
 
+bool CalculateProjectedProfitAtTarget(double targetPrice, double &targetProfit, double &targetLots, int &targetOrders)
+{
+   targetProfit = 0.0;
+   targetLots = 0.0;
+   targetOrders = 0;
+
+   if(!ShowTargetLine) return(false);
+   if(!OnlyCurrentSymbol) return(false); // target line e' un prezzo del simbolo corrente
+   if(targetPrice <= 0.0) return(false);
+
+   double tickSize = MarketInfo(Symbol(), MODE_TICKSIZE);
+   double tickValue = MarketInfo(Symbol(), MODE_TICKVALUE);
+   if(tickSize <= 0.0 || tickValue <= 0.0)
+      return(false);
+
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         continue;
+
+      int type = OrderType();
+      if(!IsMarketPosition(type)) continue;
+      if(!IsDirectionEnabled(type)) continue;
+      if(OrderSymbol() != Symbol()) continue;
+
+      double lots = OrderLots();
+      double openPrice = OrderOpenPrice();
+      if(lots <= 0.0 || openPrice <= 0.0)
+         continue;
+
+      double priceDiff = 0.0;
+      if(type == OP_BUY) priceDiff = targetPrice - openPrice;
+      else if(type == OP_SELL) priceDiff = openPrice - targetPrice;
+
+      double projected = (priceDiff / tickSize) * tickValue * lots;
+      if(IncludeSwapCommissionInTarget)
+         projected += (OrderSwap() + OrderCommission());
+
+      targetProfit += projected;
+      targetLots += lots;
+      targetOrders++;
+   }
+
+   return(targetOrders > 0);
+}
+
 void UpdateIndicator()
 {
    double buyAvg = 0.0, buyLots = 0.0;
@@ -216,6 +301,8 @@ void UpdateIndicator()
 
    bool showBuy = IsDirectionEnabled(OP_BUY);
    bool showSell = IsDirectionEnabled(OP_SELL);
+   double targetPrice = 0.0;
+   EnsureTargetLine(targetPrice);
 
    if(showBuy && hasBuy) EnsureHLine(g_buyLine, buyAvg, BuyLineColor);
    else DeleteIfExists(g_buyLine);
@@ -229,6 +316,7 @@ void UpdateIndicator()
       DeleteIfExists(g_info2);
       DeleteIfExists(g_info3);
       DeleteIfExists(g_info4);
+      DeleteIfExists(g_info5);
       ChartRedraw(0);
       return;
    }
@@ -282,6 +370,34 @@ void UpdateIndicator()
       PanelTextColor
    );
 
+   double targetProfit = 0.0, targetLots = 0.0;
+   int targetOrders = 0;
+   bool hasTargetProjection = CalculateProjectedProfitAtTarget(targetPrice, targetProfit, targetLots, targetOrders);
+   color targetColor = PanelTextColor;
+   string targetText = "TP line: N/A";
+   if(hasTargetProjection)
+   {
+      if(targetProfit > 0.0) targetColor = BuyLineColor;
+      else if(targetProfit < 0.0) targetColor = SellLineColor;
+      targetText =
+         "TP@" + PriceFmt(targetPrice) +
+         " => " + MoneyFmt(targetProfit) +
+         " | lotti: " + DoubleToString(targetLots, 2) +
+         " | ordini: " + IntegerToString(targetOrders);
+   }
+   else if(ShowTargetLine && !OnlyCurrentSymbol)
+   {
+      targetText = "TP line: N/A (OnlyCurrentSymbol=false)";
+   }
+
+   DrawPanelLine(
+      g_info5,
+      PanelX,
+      PanelY + 72,
+      targetText,
+      targetColor
+   );
+
    DrawPanelLine(
       g_info3,
       PanelX,
@@ -304,6 +420,8 @@ void DeleteAllObjects()
    DeleteIfExists(g_info2);
    DeleteIfExists(g_info3);
    DeleteIfExists(g_info4);
+   DeleteIfExists(g_info5);
+   DeleteIfExists(g_targetLine);
 }
 
 int OnInit()
@@ -311,10 +429,12 @@ int OnInit()
    g_prefix = "AVGLOAD_" + IntegerToString((int)ChartID()) + "_" + Symbol() + "_" + IntegerToString(Period()) + "_";
    g_buyLine = g_prefix + "BUY_LINE";
    g_sellLine = g_prefix + "SELL_LINE";
+   g_targetLine = g_prefix + "TARGET_LINE";
    g_info1 = g_prefix + "INFO_1";
    g_info2 = g_prefix + "INFO_2";
    g_info3 = g_prefix + "INFO_3";
    g_info4 = g_prefix + "INFO_4";
+   g_info5 = g_prefix + "INFO_5";
 
    IndicatorShortName("Average Load Price MT4");
    EventSetTimer(MathMax(1, UpdateSeconds));
@@ -346,4 +466,16 @@ int OnCalculate(const int rates_total,
 void OnTimer()
 {
    UpdateIndicator();
+}
+
+void OnChartEvent(const int id,
+                  const long &lparam,
+                  const double &dparam,
+                  const string &sparam)
+{
+   if(id == CHARTEVENT_OBJECT_DRAG || id == CHARTEVENT_OBJECT_CHANGE)
+   {
+      if(sparam == g_targetLine)
+         UpdateIndicator();
+   }
 }
