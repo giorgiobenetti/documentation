@@ -28,6 +28,7 @@ input int             PanelFontSize = 10;
 input string          PanelFontName = "Arial";
 input bool            UseBoldText = true;
 input color           PanelTextColor = clrWhite;
+input double          MarginCallPercent = 50.0; // soglia margin call (% margine)
 
 string g_prefix = "";
 string g_buyLine = "";
@@ -35,6 +36,7 @@ string g_sellLine = "";
 string g_info1 = "";
 string g_info2 = "";
 string g_info3 = "";
+string g_info4 = "";
 
 bool IsMarketPosition(const int orderType)
 {
@@ -83,6 +85,15 @@ bool CalculateAverageLoadPrice(const int orderType, double &avgPrice, double &to
 
    avgPrice = weightedSum / totalLots;
    return(true);
+}
+
+double PipSize()
+{
+   int digits = (int)MarketInfo(Symbol(), MODE_DIGITS);
+   double point = MarketInfo(Symbol(), MODE_POINT);
+   if(digits == 3 || digits == 5)
+      return(point * 10.0);
+   return(point);
 }
 
 void DeleteIfExists(const string name)
@@ -146,6 +157,53 @@ string MarginLevelFmt()
    return(DoubleToString(ml, 1) + "%");
 }
 
+string MarginCallPriceText(double buyLots, double sellLots)
+{
+   if(!OnlyCurrentSymbol)
+      return("MC@50%: N/A (OnlyCurrentSymbol=false)");
+
+   double margin = AccountMargin();
+   if(margin <= 0.0)
+      return("MC@50%: N/A (margin=0)");
+
+   double triggerPct = MarginCallPercent;
+   if(triggerPct <= 0.0) triggerPct = 50.0;
+   double triggerEquity = margin * (triggerPct / 100.0);
+   double lossToCall = AccountEquity() - triggerEquity;
+   if(lossToCall <= 0.0)
+      return("MC@50%: ATTIVA/IMMINENTE");
+
+   double netLots = buyLots - sellLots;
+   if(MathAbs(netLots) < 0.0000001)
+      return("MC@50%: N/A (net lots=0)");
+
+   double tickSize = MarketInfo(Symbol(), MODE_TICKSIZE);
+   double tickValue = MarketInfo(Symbol(), MODE_TICKVALUE);
+   if(tickSize <= 0.0 || tickValue <= 0.0)
+      return("MC@50%: N/A (tick data)");
+
+   // dPL = (deltaPrice / tickSize) * tickValue * netLots
+   // set dPL = -lossToCall and solve deltaPrice
+   double deltaPrice = (-lossToCall * tickSize) / (tickValue * netLots);
+   double currentRef = (netLots > 0.0 ? Bid : Ask);
+   double callPrice = currentRef + deltaPrice;
+
+   if(callPrice <= 0.0)
+      return("MC@50%: N/A (prezzo<=0)");
+
+   double pip = PipSize();
+   double distPips = 0.0;
+   if(pip > 0.0)
+      distPips = MathAbs(currentRef - callPrice) / pip;
+
+   string side = (netLots > 0.0 ? "LONG" : "SHORT");
+   return(
+      "MC@" + DoubleToString(triggerPct, 0) + "%: " + DoubleToString(callPrice, Digits) +
+      " | dist: " + DoubleToString(distPips, 1) + " pips" +
+      " | net: " + side
+   );
+}
+
 void UpdateIndicator()
 {
    double buyAvg = 0.0, buyLots = 0.0;
@@ -170,9 +228,12 @@ void UpdateIndicator()
       DeleteIfExists(g_info1);
       DeleteIfExists(g_info2);
       DeleteIfExists(g_info3);
+      DeleteIfExists(g_info4);
       ChartRedraw(0);
       return;
    }
+
+   string mcText = MarginCallPriceText(buyLots, sellLots);
 
    if(showBuy && hasBuy)
    {
@@ -214,6 +275,14 @@ void UpdateIndicator()
    else if(accountPL < 0.0) plColor = SellLineColor;
 
    DrawPanelLine(
+      g_info4,
+      PanelX,
+      PanelY + 54,
+      mcText,
+      PanelTextColor
+   );
+
+   DrawPanelLine(
       g_info3,
       PanelX,
       PanelY,
@@ -234,6 +303,7 @@ void DeleteAllObjects()
    DeleteIfExists(g_info1);
    DeleteIfExists(g_info2);
    DeleteIfExists(g_info3);
+   DeleteIfExists(g_info4);
 }
 
 int OnInit()
@@ -244,6 +314,7 @@ int OnInit()
    g_info1 = g_prefix + "INFO_1";
    g_info2 = g_prefix + "INFO_2";
    g_info3 = g_prefix + "INFO_3";
+   g_info4 = g_prefix + "INFO_4";
 
    IndicatorShortName("Average Load Price MT4");
    EventSetTimer(MathMax(1, UpdateSeconds));
