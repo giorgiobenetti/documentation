@@ -187,6 +187,14 @@ string MoneyFmt(const double v)
    return(DoubleToString(v, 2) + " " + AccountCurrency());
 }
 
+color VisibleInfoColor()
+{
+   // Evita testo bianco su sfondo chiaro.
+   if(PanelTextColor == clrWhite)
+      return(clrBlack);
+   return(PanelTextColor);
+}
+
 string MarginLevelFmt()
 {
    double margin = AccountMargin();
@@ -337,7 +345,7 @@ void UpdateIndicator()
    }
    else
    {
-      DrawPanelLine(g_info1, PanelX, PanelY + 36, "BUY avg: -", PanelTextColor);
+      DrawPanelLine(g_info1, PanelX, PanelY + 36, "BUY avg: -", VisibleInfoColor());
    }
 
    if(showSell && hasSell)
@@ -354,7 +362,7 @@ void UpdateIndicator()
    }
    else
    {
-      DrawPanelLine(g_info2, PanelX, PanelY + 18, "SELL avg: -", PanelTextColor);
+      DrawPanelLine(g_info2, PanelX, PanelY + 18, "SELL avg: -", VisibleInfoColor());
    }
 
    double accountPL = AccountProfit();
@@ -367,13 +375,13 @@ void UpdateIndicator()
       PanelX,
       PanelY + 54,
       mcText,
-      PanelTextColor
+      VisibleInfoColor()
    );
 
    double targetProfit = 0.0, targetLots = 0.0;
    int targetOrders = 0;
    bool hasTargetProjection = CalculateProjectedProfitAtTarget(targetPrice, targetProfit, targetLots, targetOrders);
-   color targetColor = PanelTextColor;
+   color targetColor = VisibleInfoColor();
    string targetText = "TP line: N/A";
    if(hasTargetProjection)
    {
