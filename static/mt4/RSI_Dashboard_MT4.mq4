@@ -17,6 +17,11 @@ input double m15ExtremeOversold = 15.0;
 input int divergenceLookbackBars = 200;
 input int divergencePivotLeft = 2;
 input int divergencePivotRight = 2;
+input bool sendEmailReport = false;
+input int emailIntervalMinutes = 30;
+input bool sendEmailImmediately = false;
+input int emailMaxRows = 40;
+input string emailSubjectPrefix = "RSI Dashboard Report";
 
 //-------------------- TESTI ----------------------------------------
 string title = "DASHBOARD RSI - IG LIVE";
@@ -32,6 +37,7 @@ color COLOR_M15_OVER = C'255,120,0';   // arancione forte
 color COLOR_M15_UNDER = C'140,0,200';  // viola forte
 color COLOR_BOTH_OVER = C'255,0,255';  // magenta intenso
 color COLOR_BOTH_UNDER = C'0,160,0';   // verde intenso
+datetime g_lastEmailSent = 0;
 
 // snapshot stile grafico originale
 bool g_chartStyleSaved = false;
@@ -63,6 +69,28 @@ string TfToString(ENUM_TIMEFRAMES tf)
       case PERIOD_MN1:  return("MN1");
       default:          return(IntegerToString((int)tf));
    }
+}
+
+string PadRight(string value, int width)
+{
+   if(width <= 0) return("");
+   string out = value;
+   if(StringLen(out) > width)
+      out = StringSubstr(out, 0, width);
+   while(StringLen(out) < width)
+      out += " ";
+   return(out);
+}
+
+string PadLeft(string value, int width)
+{
+   if(width <= 0) return("");
+   string out = value;
+   if(StringLen(out) > width)
+      out = StringSubstr(out, StringLen(out) - width);
+   while(StringLen(out) < width)
+      out = " " + out;
+   return(out);
 }
 
 string GetRsiState(double value)
@@ -119,6 +147,97 @@ string GetBothExtremeTag(int signal)
    if(signal > 0) return("BOTH HI");
    if(signal < 0) return("BOTH LO");
    return("-");
+}
+
+string BuildEmailReportBody()
+{
+   string tfMain = TfToString(rsiTimeframeMain);
+   string tfSecondary = TfToString(rsiTimeframeSecondary);
+   string report = "";
+
+   report += "RSI DASHBOARD REPORT\n";
+   report += "Generated: " + TimeToString(TimeLocal(), TIME_DATE|TIME_MINUTES|TIME_SECONDS) + "\n";
+   report += "Symbol: " + Symbol() + " | Account: " + IntegerToString((int)AccountNumber()) + " | Server: " + AccountServer() + "\n";
+   report += "Thresholds -> H4: " + DoubleToString(h4ExtremeOverbought, 0) + "/" + DoubleToString(h4ExtremeOversold, 0) +
+             " | M15: " + DoubleToString(m15ExtremeOverbought, 0) + "/" + DoubleToString(m15ExtremeOversold, 0) + "\n";
+   report += "\n";
+   report += PadRight("SYM", 10) + " | " +
+             PadRight(tfMain, 10) + " | " +
+             PadRight(tfSecondary, 10) + " | " +
+             PadRight("DIV " + tfMain, 9) + " | " +
+             PadRight("DIV " + tfSecondary, 10) + " | " +
+             PadRight("BOTH", 7) + "\n";
+   report += "--------------------------------------------------------------------------\n";
+
+   int symTotal = SymbolsTotal(true);
+   int maxRows = MathMax(1, emailMaxRows);
+   int count = 0;
+
+   for(int i = 0; i < symTotal && count < maxRows; i++)
+   {
+      string symbol = SymbolName(i, true);
+      double rsiMain = iRSI(symbol, rsiTimeframeMain, rsiPeriod, PRICE_CLOSE, 0);
+      double rsiSecondary = iRSI(symbol, rsiTimeframeSecondary, rsiPeriod, PRICE_CLOSE, 0);
+
+      if(rsiMain == EMPTY_VALUE || rsiSecondary == EMPTY_VALUE) continue;
+      if(rsiMain < 0 || rsiMain > 100 || rsiSecondary < 0 || rsiSecondary > 100) continue;
+
+      string stateMainCode = GetRsiStateCode(rsiMain);
+      string stateSecondaryCode = GetRsiStateCode(rsiSecondary);
+      string divMain = DivergenceToText(GetRsiDivergence(symbol, rsiTimeframeMain));
+      string divSecondary = DivergenceToText(GetRsiDivergence(symbol, rsiTimeframeSecondary));
+
+      int h4ExtremeSignal = GetExtremeSignal(rsiMain, h4ExtremeOverbought, h4ExtremeOversold);
+      int m15ExtremeSignal = GetExtremeSignal(rsiSecondary, m15ExtremeOverbought, m15ExtremeOversold);
+      int bothExtremeSignal = 0;
+      if(h4ExtremeSignal != 0 && h4ExtremeSignal == m15ExtremeSignal)
+         bothExtremeSignal = h4ExtremeSignal;
+      string bothTag = (bothExtremeSignal > 0 ? "HI" : (bothExtremeSignal < 0 ? "LO" : "-"));
+
+      string colMain = PadLeft(DoubleToString(rsiMain, 1), 5) + " " + PadRight(stateMainCode, 2);
+      string colSecondary = PadLeft(DoubleToString(rsiSecondary, 1), 5) + " " + PadRight(stateSecondaryCode, 2);
+
+      report += PadRight(symbol, 10) + " | " +
+                PadRight(colMain, 10) + " | " +
+                PadRight(colSecondary, 10) + " | " +
+                PadRight(divMain, 9) + " | " +
+                PadRight(divSecondary, 10) + " | " +
+                PadRight(bothTag, 7) + "\n";
+
+      count++;
+   }
+
+   if(count == 0)
+      report += "No valid symbols for current settings.\n";
+
+   return(report);
+}
+
+void TrySendScheduledEmailReport()
+{
+   if(!sendEmailReport) return;
+
+   int intervalSec = MathMax(1, emailIntervalMinutes) * 60;
+   datetime now = TimeLocal();
+
+   if(g_lastEmailSent > 0 && (now - g_lastEmailSent) < intervalSec)
+      return;
+
+   string subject = emailSubjectPrefix + " | " + Symbol() + " | " +
+                    TfToString(rsiTimeframeMain) + "/" + TfToString(rsiTimeframeSecondary);
+   string body = BuildEmailReportBody();
+
+   bool sent = SendMail(subject, body);
+   if(sent)
+   {
+      g_lastEmailSent = now;
+      Print("RSI Dashboard report email sent.");
+   }
+   else
+   {
+      int err = GetLastError();
+      Print("RSI Dashboard report email failed. Error: ", err);
+   }
 }
 
 bool IsSwingLow(const string symbol, ENUM_TIMEFRAMES tf, int shift, int leftBars, int rightBars)
@@ -525,17 +644,33 @@ int OnInit()
    DrawButton("btn_update", (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) - 110, 35, "Aggiorna", "update", 80, 30);
 
    UpdateDashboard();
+
+   EventSetTimer(60);
+   if(sendEmailReport)
+   {
+      if(sendEmailImmediately)
+         g_lastEmailSent = 0;
+      else
+         g_lastEmailSent = TimeLocal();
+      TrySendScheduledEmailReport();
+   }
    return(INIT_SUCCEEDED);
 }
 
 void OnDeinit(const int reason)
 {
+   EventKillTimer();
    DeleteMyObjects();
    RestoreChartStyle();
    ChartRedraw();
 }
 
 void OnTick() {}
+
+void OnTimer()
+{
+   TrySendScheduledEmailReport();
+}
 
 //-------------------- Click / chart events -------------------------
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
