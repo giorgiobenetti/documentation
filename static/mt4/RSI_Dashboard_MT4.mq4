@@ -22,6 +22,8 @@ input int emailIntervalMinutes = 30;
 input bool sendEmailImmediately = false;
 input int emailMaxRows = 40;
 input string emailSubjectPrefix = "RSI Dashboard Report";
+input bool sendEmailOnlyIfBothSignal = false;
+input int minBothSignalsToSend = 1;
 
 //-------------------- TESTI ----------------------------------------
 string title = "DASHBOARD RSI - IG LIVE";
@@ -149,11 +151,13 @@ string GetBothExtremeTag(int signal)
    return("-");
 }
 
-string BuildEmailReportBody()
+string BuildEmailReportBody(int &bothSignalsCount, int &rowsIncluded)
 {
    string tfMain = TfToString(rsiTimeframeMain);
    string tfSecondary = TfToString(rsiTimeframeSecondary);
    string report = "";
+   bothSignalsCount = 0;
+   rowsIncluded = 0;
 
    report += "RSI DASHBOARD REPORT\n";
    report += "Generated: " + TimeToString(TimeLocal(), TIME_DATE|TIME_MINUTES|TIME_SECONDS) + "\n";
@@ -193,6 +197,8 @@ string BuildEmailReportBody()
       if(h4ExtremeSignal != 0 && h4ExtremeSignal == m15ExtremeSignal)
          bothExtremeSignal = h4ExtremeSignal;
       string bothTag = (bothExtremeSignal > 0 ? "HI" : (bothExtremeSignal < 0 ? "LO" : "-"));
+      if(bothExtremeSignal != 0)
+         bothSignalsCount++;
 
       string colMain = PadLeft(DoubleToString(rsiMain, 1), 5) + " " + PadRight(stateMainCode, 2);
       string colSecondary = PadLeft(DoubleToString(rsiSecondary, 1), 5) + " " + PadRight(stateSecondaryCode, 2);
@@ -206,9 +212,12 @@ string BuildEmailReportBody()
 
       count++;
    }
+   rowsIncluded = count;
 
    if(count == 0)
       report += "No valid symbols for current settings.\n";
+   else
+      report += "\nRows: " + IntegerToString(count) + " | BOTH signals: " + IntegerToString(bothSignalsCount) + "\n";
 
    return(report);
 }
@@ -223,9 +232,22 @@ void TrySendScheduledEmailReport()
    if(g_lastEmailSent > 0 && (now - g_lastEmailSent) < intervalSec)
       return;
 
+   int bothSignalsCount = 0;
+   int rowsIncluded = 0;
+   string body = BuildEmailReportBody(bothSignalsCount, rowsIncluded);
+
+   int minBoth = MathMax(1, minBothSignalsToSend);
+   if(sendEmailOnlyIfBothSignal && bothSignalsCount < minBoth)
+   {
+      g_lastEmailSent = now; // evita tentativi continui ogni minuto
+      Print("RSI Dashboard email skipped: BOTH signals ", bothSignalsCount, " < min ", minBoth);
+      return;
+   }
+
    string subject = emailSubjectPrefix + " | " + Symbol() + " | " +
-                    TfToString(rsiTimeframeMain) + "/" + TfToString(rsiTimeframeSecondary);
-   string body = BuildEmailReportBody();
+                    TfToString(rsiTimeframeMain) + "/" + TfToString(rsiTimeframeSecondary) +
+                    " | BOTH=" + IntegerToString(bothSignalsCount) +
+                    " | ROWS=" + IntegerToString(rowsIncluded);
 
    bool sent = SendMail(subject, body);
    if(sent)
