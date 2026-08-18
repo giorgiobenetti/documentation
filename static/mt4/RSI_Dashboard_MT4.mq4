@@ -95,6 +95,35 @@ string PadLeft(string value, int width)
    return(out);
 }
 
+int CollectSortedSymbols(string &symbols[])
+{
+   int symTotal = SymbolsTotal(true);
+   if(symTotal <= 0)
+   {
+      ArrayResize(symbols, 0);
+      return(0);
+   }
+
+   ArrayResize(symbols, symTotal);
+   for(int i = 0; i < symTotal; i++)
+      symbols[i] = SymbolName(i, true);
+
+   for(int i = 0; i < symTotal - 1; i++)
+   {
+      for(int j = i + 1; j < symTotal; j++)
+      {
+         if(StringCompare(symbols[i], symbols[j], false) > 0)
+         {
+            string tmp = symbols[i];
+            symbols[i] = symbols[j];
+            symbols[j] = tmp;
+         }
+      }
+   }
+
+   return(symTotal);
+}
+
 string GetRsiState(double value)
 {
    if(value >= overbought) return("Ipercomprato");
@@ -173,13 +202,14 @@ string BuildEmailReportBody(int &bothSignalsCount, int &rowsIncluded)
              PadRight("BOTH", 7) + "\n";
    report += "--------------------------------------------------------------------------\n";
 
-   int symTotal = SymbolsTotal(true);
+   string symbols[];
+   int symTotal = CollectSortedSymbols(symbols);
    int maxRows = MathMax(1, emailMaxRows);
    int count = 0;
 
    for(int i = 0; i < symTotal && count < maxRows; i++)
    {
-      string symbol = SymbolName(i, true);
+      string symbol = symbols[i];
       double rsiMain = iRSI(symbol, rsiTimeframeMain, rsiPeriod, PRICE_CLOSE, 0);
       double rsiSecondary = iRSI(symbol, rsiTimeframeSecondary, rsiPeriod, PRICE_CLOSE, 0);
 
@@ -596,12 +626,13 @@ void UpdateDashboard()
 
    DrawLabel("legend", 200, 35, "RSI: H4 75/25 | M15 85/15 | BOTH=allineati", 8, clrGray);
 
-   int symTotal = SymbolsTotal(true);
+   string symbols[];
+   int symTotal = CollectSortedSymbols(symbols);
    int count = 0;
 
    for(int i = 0; i < symTotal && count < 40; i++)
    {
-      string symbol = SymbolName(i, true);
+      string symbol = symbols[i];
 
       double rsiMain = iRSI(symbol, rsiTimeframeMain, rsiPeriod, PRICE_CLOSE, 0);
       double rsiSecondary = iRSI(symbol, rsiTimeframeSecondary, rsiPeriod, PRICE_CLOSE, 0);
