@@ -1,0 +1,759 @@
+//+------------------------------------------------------------------+
+//|                    RSI Dashboard (MT4 - NO LOCK)                 |
+//|                         Powered by Investire.biz                 |
+//+------------------------------------------------------------------+
+#property strict
+
+//-------------------- INPUT ----------------------------------------
+input int rsiPeriod = 14;
+input ENUM_TIMEFRAMES rsiTimeframeMain = PERIOD_H4;
+input ENUM_TIMEFRAMES rsiTimeframeSecondary = PERIOD_M15;
+input double overbought = 70.0;
+input double oversold = 30.0;
+input double h4ExtremeOverbought = 75.0;
+input double h4ExtremeOversold = 25.0;
+input double m15ExtremeOverbought = 85.0;
+input double m15ExtremeOversold = 15.0;
+input int divergenceLookbackBars = 200;
+input int divergencePivotLeft = 2;
+input int divergencePivotRight = 2;
+input bool sendEmailReport = false;
+input int emailIntervalMinutes = 30;
+input bool sendEmailImmediately = false;
+input int emailMaxRows = 40;
+input string emailSubjectPrefix = "RSI Dashboard Report";
+input bool sendEmailOnlyIfBothSignal = false;
+input int minBothSignalsToSend = 1;
+
+//-------------------- TESTI ----------------------------------------
+string title = "DASHBOARD RSI - IG LIVE";
+string poweredByText = "Powered by Investire.biz";
+
+//-------------------- INTERNAL -------------------------------------
+string PREFIX = "RSIDASH_";
+color COLOR_BRAND_GREEN = C'87,190,124';   // #57be7c
+color COLOR_SIGNAL_GREEN = C'130,230,170'; // verde chiaro per strumenti
+color COLOR_H4_OVER = C'220,0,0';      // rosso forte
+color COLOR_H4_UNDER = C'0,70,220';    // blu forte
+color COLOR_M15_OVER = C'255,120,0';   // arancione forte
+color COLOR_M15_UNDER = C'140,0,200';  // viola forte
+color COLOR_BOTH_OVER = C'255,0,255';  // magenta intenso
+color COLOR_BOTH_UNDER = C'0,160,0';   // verde intenso
+datetime g_lastEmailSent = 0;
+
+// snapshot stile grafico originale
+bool g_chartStyleSaved = false;
+long g_oldBg = clrWhite;
+long g_oldFg = clrBlack;
+long g_oldChartUp = clrBlack;
+long g_oldChartDown = clrBlack;
+long g_oldBull = clrBlack;
+long g_oldBear = clrBlack;
+long g_oldLine = clrBlack;
+long g_oldGrid = true;
+long g_oldShowOHLC = true;
+long g_oldShowBid = true;
+long g_oldShowAsk = true;
+long g_oldShowPeriodSep = true;
+
+string TfToString(ENUM_TIMEFRAMES tf)
+{
+   switch(tf)
+   {
+      case PERIOD_M1:   return("M1");
+      case PERIOD_M5:   return("M5");
+      case PERIOD_M15:  return("M15");
+      case PERIOD_M30:  return("M30");
+      case PERIOD_H1:   return("H1");
+      case PERIOD_H4:   return("H4");
+      case PERIOD_D1:   return("D1");
+      case PERIOD_W1:   return("W1");
+      case PERIOD_MN1:  return("MN1");
+      default:          return(IntegerToString((int)tf));
+   }
+}
+
+string PadRight(string value, int width)
+{
+   if(width <= 0) return("");
+   string out = value;
+   if(StringLen(out) > width)
+      out = StringSubstr(out, 0, width);
+   while(StringLen(out) < width)
+      out += " ";
+   return(out);
+}
+
+string PadLeft(string value, int width)
+{
+   if(width <= 0) return("");
+   string out = value;
+   if(StringLen(out) > width)
+      out = StringSubstr(out, StringLen(out) - width);
+   while(StringLen(out) < width)
+      out = " " + out;
+   return(out);
+}
+
+int CollectSortedSymbols(string &symbols[])
+{
+   int symTotal = SymbolsTotal(true);
+   if(symTotal <= 0)
+   {
+      ArrayResize(symbols, 0);
+      return(0);
+   }
+
+   ArrayResize(symbols, symTotal);
+   for(int i = 0; i < symTotal; i++)
+      symbols[i] = SymbolName(i, true);
+
+   for(int i = 0; i < symTotal - 1; i++)
+   {
+      for(int j = i + 1; j < symTotal; j++)
+      {
+         if(StringCompare(symbols[i], symbols[j], false) > 0)
+         {
+            string tmp = symbols[i];
+            symbols[i] = symbols[j];
+            symbols[j] = tmp;
+         }
+      }
+   }
+
+   return(symTotal);
+}
+
+string GetRsiState(double value)
+{
+   if(value >= overbought) return("Ipercomprato");
+   if(value <= oversold)   return("Ipervenduto");
+   return("Neutro");
+}
+
+string GetRsiStateCode(double value)
+{
+   if(value >= overbought) return("OC");
+   if(value <= oversold)   return("OV");
+   return("N");
+}
+
+color GetRsiStateColor(double value)
+{
+   if(value >= overbought) return(clrRed);
+   if(value <= oversold)   return(COLOR_SIGNAL_GREEN);
+   return(clrBlack);
+}
+
+int GetExtremeSignal(double value, double levelOver, double levelUnder)
+{
+   if(value >= levelOver) return(1);
+   if(value <= levelUnder) return(-1);
+   return(0);
+}
+
+color GetH4ExtremeColor(int signal)
+{
+   if(signal > 0) return(COLOR_H4_OVER);
+   if(signal < 0) return(COLOR_H4_UNDER);
+   return(clrBlack);
+}
+
+color GetM15ExtremeColor(int signal)
+{
+   if(signal > 0) return(COLOR_M15_OVER);
+   if(signal < 0) return(COLOR_M15_UNDER);
+   return(clrBlack);
+}
+
+color GetBothExtremeColor(int signal)
+{
+   if(signal > 0) return(COLOR_BOTH_OVER);
+   if(signal < 0) return(COLOR_BOTH_UNDER);
+   return(clrBlack);
+}
+
+string GetBothExtremeTag(int signal)
+{
+   if(signal > 0) return("BOTH HI");
+   if(signal < 0) return("BOTH LO");
+   return("-");
+}
+
+string BuildEmailReportBody(int &bothSignalsCount, int &rowsIncluded)
+{
+   string tfMain = TfToString(rsiTimeframeMain);
+   string tfSecondary = TfToString(rsiTimeframeSecondary);
+   string report = "";
+   bothSignalsCount = 0;
+   rowsIncluded = 0;
+
+   report += "RSI DASHBOARD REPORT\n";
+   report += "Generated: " + TimeToString(TimeLocal(), TIME_DATE|TIME_MINUTES|TIME_SECONDS) + "\n";
+   report += "Symbol: " + Symbol() + " | Account: " + IntegerToString((int)AccountNumber()) + " | Server: " + AccountServer() + "\n";
+   report += "Thresholds -> H4: " + DoubleToString(h4ExtremeOverbought, 0) + "/" + DoubleToString(h4ExtremeOversold, 0) +
+             " | M15: " + DoubleToString(m15ExtremeOverbought, 0) + "/" + DoubleToString(m15ExtremeOversold, 0) + "\n";
+   report += "\n";
+   report += PadRight("SYM", 10) + " | " +
+             PadRight(tfMain, 10) + " | " +
+             PadRight(tfSecondary, 10) + " | " +
+             PadRight("DIV " + tfMain, 9) + " | " +
+             PadRight("DIV " + tfSecondary, 10) + " | " +
+             PadRight("BOTH", 7) + "\n";
+   report += "--------------------------------------------------------------------------\n";
+
+   string symbols[];
+   int symTotal = CollectSortedSymbols(symbols);
+   int maxRows = MathMax(1, emailMaxRows);
+   int count = 0;
+
+   for(int i = 0; i < symTotal && count < maxRows; i++)
+   {
+      string symbol = symbols[i];
+      double rsiMain = iRSI(symbol, rsiTimeframeMain, rsiPeriod, PRICE_CLOSE, 0);
+      double rsiSecondary = iRSI(symbol, rsiTimeframeSecondary, rsiPeriod, PRICE_CLOSE, 0);
+
+      if(rsiMain == EMPTY_VALUE || rsiSecondary == EMPTY_VALUE) continue;
+      if(rsiMain < 0 || rsiMain > 100 || rsiSecondary < 0 || rsiSecondary > 100) continue;
+
+      string stateMainCode = GetRsiStateCode(rsiMain);
+      string stateSecondaryCode = GetRsiStateCode(rsiSecondary);
+      string divMain = DivergenceToText(GetRsiDivergence(symbol, rsiTimeframeMain));
+      string divSecondary = DivergenceToText(GetRsiDivergence(symbol, rsiTimeframeSecondary));
+
+      int h4ExtremeSignal = GetExtremeSignal(rsiMain, h4ExtremeOverbought, h4ExtremeOversold);
+      int m15ExtremeSignal = GetExtremeSignal(rsiSecondary, m15ExtremeOverbought, m15ExtremeOversold);
+      int bothExtremeSignal = 0;
+      if(h4ExtremeSignal != 0 && h4ExtremeSignal == m15ExtremeSignal)
+         bothExtremeSignal = h4ExtremeSignal;
+      string bothTag = (bothExtremeSignal > 0 ? "HI" : (bothExtremeSignal < 0 ? "LO" : "-"));
+      if(bothExtremeSignal != 0)
+         bothSignalsCount++;
+
+      string colMain = PadLeft(DoubleToString(rsiMain, 1), 5) + " " + PadRight(stateMainCode, 2);
+      string colSecondary = PadLeft(DoubleToString(rsiSecondary, 1), 5) + " " + PadRight(stateSecondaryCode, 2);
+
+      report += PadRight(symbol, 10) + " | " +
+                PadRight(colMain, 10) + " | " +
+                PadRight(colSecondary, 10) + " | " +
+                PadRight(divMain, 9) + " | " +
+                PadRight(divSecondary, 10) + " | " +
+                PadRight(bothTag, 7) + "\n";
+
+      count++;
+   }
+   rowsIncluded = count;
+
+   if(count == 0)
+      report += "No valid symbols for current settings.\n";
+   else
+      report += "\nRows: " + IntegerToString(count) + " | BOTH signals: " + IntegerToString(bothSignalsCount) + "\n";
+
+   return(report);
+}
+
+void TrySendScheduledEmailReport()
+{
+   if(!sendEmailReport) return;
+
+   int intervalSec = MathMax(1, emailIntervalMinutes) * 60;
+   datetime now = TimeLocal();
+
+   if(g_lastEmailSent > 0 && (now - g_lastEmailSent) < intervalSec)
+      return;
+
+   int bothSignalsCount = 0;
+   int rowsIncluded = 0;
+   string body = BuildEmailReportBody(bothSignalsCount, rowsIncluded);
+
+   int minBoth = MathMax(1, minBothSignalsToSend);
+   if(sendEmailOnlyIfBothSignal && bothSignalsCount < minBoth)
+   {
+      g_lastEmailSent = now; // evita tentativi continui ogni minuto
+      Print("RSI Dashboard email skipped: BOTH signals ", bothSignalsCount, " < min ", minBoth);
+      return;
+   }
+
+   string subject = emailSubjectPrefix + " | " + Symbol() + " | " +
+                    TfToString(rsiTimeframeMain) + "/" + TfToString(rsiTimeframeSecondary) +
+                    " | BOTH=" + IntegerToString(bothSignalsCount) +
+                    " | ROWS=" + IntegerToString(rowsIncluded);
+
+   bool sent = SendMail(subject, body);
+   if(sent)
+   {
+      g_lastEmailSent = now;
+      Print("RSI Dashboard report email sent.");
+   }
+   else
+   {
+      int err = GetLastError();
+      Print("RSI Dashboard report email failed. Error: ", err);
+   }
+}
+
+bool IsSwingLow(const string symbol, ENUM_TIMEFRAMES tf, int shift, int leftBars, int rightBars)
+{
+   double center = iLow(symbol, tf, shift);
+   if(center <= 0) return(false);
+
+   for(int i = 1; i <= leftBars; i++)
+      if(iLow(symbol, tf, shift + i) <= center) return(false);
+
+   for(int j = 1; j <= rightBars; j++)
+      if(iLow(symbol, tf, shift - j) < center) return(false);
+
+   return(true);
+}
+
+bool IsSwingHigh(const string symbol, ENUM_TIMEFRAMES tf, int shift, int leftBars, int rightBars)
+{
+   double center = iHigh(symbol, tf, shift);
+   if(center <= 0) return(false);
+
+   for(int i = 1; i <= leftBars; i++)
+      if(iHigh(symbol, tf, shift + i) >= center) return(false);
+
+   for(int j = 1; j <= rightBars; j++)
+      if(iHigh(symbol, tf, shift - j) > center) return(false);
+
+   return(true);
+}
+
+bool FindRecentTwoSwingLows(const string symbol, ENUM_TIMEFRAMES tf, int lookbackBars, int leftBars, int rightBars, int &recentShift, int &olderShift)
+{
+   recentShift = -1;
+   olderShift = -1;
+
+   int totalBars = Bars(symbol, tf);
+   int startShift = rightBars + 1;
+   int endShift = MathMin(lookbackBars, totalBars - leftBars - 1);
+   if(endShift <= startShift) return(false);
+
+   for(int shift = startShift; shift <= endShift; shift++)
+   {
+      if(!IsSwingLow(symbol, tf, shift, leftBars, rightBars)) continue;
+
+      if(recentShift < 0) recentShift = shift;
+      else
+      {
+         olderShift = shift;
+         return(true);
+      }
+   }
+
+   return(false);
+}
+
+bool FindRecentTwoSwingHighs(const string symbol, ENUM_TIMEFRAMES tf, int lookbackBars, int leftBars, int rightBars, int &recentShift, int &olderShift)
+{
+   recentShift = -1;
+   olderShift = -1;
+
+   int totalBars = Bars(symbol, tf);
+   int startShift = rightBars + 1;
+   int endShift = MathMin(lookbackBars, totalBars - leftBars - 1);
+   if(endShift <= startShift) return(false);
+
+   for(int shift = startShift; shift <= endShift; shift++)
+   {
+      if(!IsSwingHigh(symbol, tf, shift, leftBars, rightBars)) continue;
+
+      if(recentShift < 0) recentShift = shift;
+      else
+      {
+         olderShift = shift;
+         return(true);
+      }
+   }
+
+   return(false);
+}
+
+int GetRsiDivergence(const string symbol, ENUM_TIMEFRAMES tf)
+{
+   bool bullish = false;
+   bool bearish = false;
+   int bullishShift = 1000000;
+   int bearishShift = 1000000;
+
+   int lowRecent = -1, lowOlder = -1;
+   if(FindRecentTwoSwingLows(symbol, tf, divergenceLookbackBars, divergencePivotLeft, divergencePivotRight, lowRecent, lowOlder))
+   {
+      double priceLowRecent = iLow(symbol, tf, lowRecent);
+      double priceLowOlder = iLow(symbol, tf, lowOlder);
+      double rsiLowRecent = iRSI(symbol, tf, rsiPeriod, PRICE_CLOSE, lowRecent);
+      double rsiLowOlder = iRSI(symbol, tf, rsiPeriod, PRICE_CLOSE, lowOlder);
+
+      if(priceLowRecent < priceLowOlder && rsiLowRecent > rsiLowOlder)
+      {
+         bullish = true;
+         bullishShift = lowRecent;
+      }
+   }
+
+   int highRecent = -1, highOlder = -1;
+   if(FindRecentTwoSwingHighs(symbol, tf, divergenceLookbackBars, divergencePivotLeft, divergencePivotRight, highRecent, highOlder))
+   {
+      double priceHighRecent = iHigh(symbol, tf, highRecent);
+      double priceHighOlder = iHigh(symbol, tf, highOlder);
+      double rsiHighRecent = iRSI(symbol, tf, rsiPeriod, PRICE_CLOSE, highRecent);
+      double rsiHighOlder = iRSI(symbol, tf, rsiPeriod, PRICE_CLOSE, highOlder);
+
+      if(priceHighRecent > priceHighOlder && rsiHighRecent < rsiHighOlder)
+      {
+         bearish = true;
+         bearishShift = highRecent;
+      }
+   }
+
+   if(bullish && bearish)
+      return((bullishShift < bearishShift) ? 1 : -1);
+   if(bullish) return(1);
+   if(bearish) return(-1);
+   return(0);
+}
+
+string DivergenceToText(int divType)
+{
+   if(divType > 0) return("Rialz");
+   if(divType < 0) return("Ribass");
+   return("-");
+}
+
+//+------------------------------------------------------------------+
+//| Utility: delete only our objects                                 |
+//+------------------------------------------------------------------+
+void DeleteMyObjects()
+{
+   int total = ObjectsTotal(0, 0, -1);
+   for(int i = total - 1; i >= 0; i--)
+   {
+      string name = ObjectName(0, i);
+      if(StringFind(name, PREFIX, 0) == 0)
+         ObjectDelete(0, name);
+   }
+}
+
+void SaveChartStyle()
+{
+   if(g_chartStyleSaved) return;
+
+   g_oldBg = ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+   g_oldFg = ChartGetInteger(0, CHART_COLOR_FOREGROUND);
+   g_oldChartUp = ChartGetInteger(0, CHART_COLOR_CHART_UP);
+   g_oldChartDown = ChartGetInteger(0, CHART_COLOR_CHART_DOWN);
+   g_oldBull = ChartGetInteger(0, CHART_COLOR_CANDLE_BULL);
+   g_oldBear = ChartGetInteger(0, CHART_COLOR_CANDLE_BEAR);
+   g_oldLine = ChartGetInteger(0, CHART_COLOR_CHART_LINE);
+
+   g_oldGrid = ChartGetInteger(0, CHART_SHOW_GRID);
+   g_oldShowOHLC = ChartGetInteger(0, CHART_SHOW_OHLC);
+   g_oldShowBid = ChartGetInteger(0, CHART_SHOW_BID_LINE);
+   g_oldShowAsk = ChartGetInteger(0, CHART_SHOW_ASK_LINE);
+   g_oldShowPeriodSep = ChartGetInteger(0, CHART_SHOW_PERIOD_SEP);
+
+   g_chartStyleSaved = true;
+}
+
+void ApplyDashboardChartStyle()
+{
+   ChartSetInteger(0, CHART_COLOR_BACKGROUND, clrWhite);
+   ChartSetInteger(0, CHART_COLOR_FOREGROUND, clrWhite);
+   ChartSetInteger(0, CHART_COLOR_CHART_UP, clrWhite);
+   ChartSetInteger(0, CHART_COLOR_CHART_DOWN, clrWhite);
+   ChartSetInteger(0, CHART_COLOR_CANDLE_BULL, clrWhite);
+   ChartSetInteger(0, CHART_COLOR_CANDLE_BEAR, clrWhite);
+   ChartSetInteger(0, CHART_COLOR_CHART_LINE, clrWhite);
+
+   ChartSetInteger(0, CHART_SHOW_GRID, false);
+   ChartSetInteger(0, CHART_SHOW_OHLC, false);
+   ChartSetInteger(0, CHART_SHOW_BID_LINE, false);
+   ChartSetInteger(0, CHART_SHOW_ASK_LINE, false);
+   ChartSetInteger(0, CHART_SHOW_PERIOD_SEP, false);
+}
+
+void RestoreChartStyle()
+{
+   if(!g_chartStyleSaved) return;
+
+   ChartSetInteger(0, CHART_COLOR_BACKGROUND, g_oldBg);
+   ChartSetInteger(0, CHART_COLOR_FOREGROUND, g_oldFg);
+   ChartSetInteger(0, CHART_COLOR_CHART_UP, g_oldChartUp);
+   ChartSetInteger(0, CHART_COLOR_CHART_DOWN, g_oldChartDown);
+   ChartSetInteger(0, CHART_COLOR_CANDLE_BULL, g_oldBull);
+   ChartSetInteger(0, CHART_COLOR_CANDLE_BEAR, g_oldBear);
+   ChartSetInteger(0, CHART_COLOR_CHART_LINE, g_oldLine);
+
+   ChartSetInteger(0, CHART_SHOW_GRID, g_oldGrid);
+   ChartSetInteger(0, CHART_SHOW_OHLC, g_oldShowOHLC);
+   ChartSetInteger(0, CHART_SHOW_BID_LINE, g_oldShowBid);
+   ChartSetInteger(0, CHART_SHOW_ASK_LINE, g_oldShowAsk);
+   ChartSetInteger(0, CHART_SHOW_PERIOD_SEP, g_oldShowPeriodSep);
+}
+
+void DrawBackgroundPanel()
+{
+   string name = PREFIX + "bg";
+   int w = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+   int h = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
+
+   if(ObjectFind(0, name) < 0)
+      ObjectCreate(0, name, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, 0);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, 0);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, w);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, h);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clrWhite);
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, clrWhite);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+}
+
+//-------------------- Drawing helpers ------------------------------
+void DrawLabel(string name, int x, int y, string text, int fontSize, color c, bool bold = false)
+{
+   name = PREFIX + name;
+
+   if(ObjectFind(0, name) < 0)
+      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, c);
+   ObjectSetString (0, name, OBJPROP_TEXT, text);
+   ObjectSetString (0, name, OBJPROP_FONT, (bold ? "Arial Bold" : "Arial"));
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 20);
+}
+
+void DrawButton(string name, int x, int y, string text, string tooltip, int width, int height)
+{
+   name = PREFIX + name;
+
+   if(ObjectFind(0, name) < 0)
+      ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0);
+
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, width);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, height);
+   ObjectSetString (0, name, OBJPROP_TEXT, text);
+   ObjectSetString (0, name, OBJPROP_TOOLTIP, tooltip);
+
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, clrWhite);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, COLOR_BRAND_GREEN);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 30);
+}
+
+void DrawCenterText(string name, string text, int fontSize, color c, int yOffset)
+{
+   name = PREFIX + name;
+
+   int w = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+   int h = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
+   int x = w / 2;
+   int y = (h / 2) + yOffset;
+
+   if(ObjectFind(0, name) < 0)
+      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, c);
+   ObjectSetString (0, name, OBJPROP_TEXT, text);
+   ObjectSetString (0, name, OBJPROP_FONT, "Arial");
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 20);
+
+   // se supportato: centra il testo
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_CENTER);
+}
+
+//-------------------- Dashboard update -----------------------------
+void UpdateDashboard()
+{
+   DrawBackgroundPanel();
+
+   int chartW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+   DrawButton("btn_update", chartW - 110, 35, "Aggiorna", "update", 80, 30);
+
+   int total = ObjectsTotal(0, 0, -1);
+   for(int i = total - 1; i >= 0; i--)
+   {
+      string name = ObjectName(0, i);
+      if(StringFind(name, PREFIX, 0) != 0) continue;
+
+      // Mantieni area fissa dashboard
+      if(name == PREFIX+"bg" || name == PREFIX+"title" || name == PREFIX+"powered_by" || name == PREFIX+"btn_update")
+         continue;
+
+      ObjectDelete(0, name);
+   }
+
+   int x1 = 10;
+   int x2 = (chartW / 2) + 10;
+   int y1 = 74, y2 = 74;
+   string tfMain = TfToString(rsiTimeframeMain);
+   string tfSecondary = TfToString(rsiTimeframeSecondary);
+
+   // Header colonna sinistra
+   DrawLabel("hdr_l_sym",    x1,      56, "SYM",      8, clrDimGray, true);
+   DrawLabel("hdr_l_h4",     x1 + 70, 56, tfMain,     8, clrDimGray, true);
+   DrawLabel("hdr_l_m15",    x1 + 165,56, tfSecondary,8, clrDimGray, true);
+   DrawLabel("hdr_l_div_h4", x1 + 260,56, "DIV H4",   8, clrDimGray, true);
+   DrawLabel("hdr_l_div_m",  x1 + 335,56, "DIV M15",  8, clrDimGray, true);
+
+   // Header colonna destra
+   DrawLabel("hdr_r_sym",    x2,      56, "SYM",      8, clrDimGray, true);
+   DrawLabel("hdr_r_h4",     x2 + 70, 56, tfMain,     8, clrDimGray, true);
+   DrawLabel("hdr_r_m15",    x2 + 165,56, tfSecondary,8, clrDimGray, true);
+   DrawLabel("hdr_r_div_h4", x2 + 260,56, "DIV H4",   8, clrDimGray, true);
+   DrawLabel("hdr_r_div_m",  x2 + 335,56, "DIV M15",  8, clrDimGray, true);
+
+   DrawLabel("legend", 200, 35, "RSI: H4 75/25 | M15 85/15 | BOTH=allineati", 8, clrGray);
+
+   string symbols[];
+   int symTotal = CollectSortedSymbols(symbols);
+   int count = 0;
+
+   for(int i = 0; i < symTotal && count < 40; i++)
+   {
+      string symbol = symbols[i];
+
+      double rsiMain = iRSI(symbol, rsiTimeframeMain, rsiPeriod, PRICE_CLOSE, 0);
+      double rsiSecondary = iRSI(symbol, rsiTimeframeSecondary, rsiPeriod, PRICE_CLOSE, 0);
+
+      if(rsiMain == EMPTY_VALUE || rsiSecondary == EMPTY_VALUE) continue;
+      if(rsiMain < 0 || rsiMain > 100 || rsiSecondary < 0 || rsiSecondary > 100) continue;
+
+      string stateMainCode = GetRsiStateCode(rsiMain);
+      string stateSecondaryCode = GetRsiStateCode(rsiSecondary);
+      string divMain = DivergenceToText(GetRsiDivergence(symbol, rsiTimeframeMain));
+      string divSecondary = DivergenceToText(GetRsiDivergence(symbol, rsiTimeframeSecondary));
+      int h4ExtremeSignal = GetExtremeSignal(rsiMain, h4ExtremeOverbought, h4ExtremeOversold);
+      int m15ExtremeSignal = GetExtremeSignal(rsiSecondary, m15ExtremeOverbought, m15ExtremeOversold);
+      int bothExtremeSignal = 0;
+      if(h4ExtremeSignal != 0 && h4ExtremeSignal == m15ExtremeSignal)
+         bothExtremeSignal = h4ExtremeSignal;
+
+      // Evidenziazione indipendente H4/M15 + colore dedicato quando entrambi sono allineati.
+      color h4Color = GetH4ExtremeColor(h4ExtremeSignal);
+      color m15Color = GetM15ExtremeColor(m15ExtremeSignal);
+      color bothColor = GetBothExtremeColor(bothExtremeSignal);
+      color neutralColor = clrBlack;
+      color symbolColor = neutralColor;
+      if(bothExtremeSignal != 0) symbolColor = bothColor;
+      else if(h4ExtremeSignal != 0) symbolColor = h4Color;
+      else if(m15ExtremeSignal != 0) symbolColor = m15Color;
+
+      color divColor = (bothExtremeSignal != 0 ? bothColor : neutralColor);
+      string bothTag = GetBothExtremeTag(bothExtremeSignal);
+      string symbolText = symbol;
+      if(bothExtremeSignal != 0)
+         symbolText = symbol + " " + bothTag;
+
+      int x = (count < 20) ? x1 : x2;
+      int y = (count < 20) ? y1 : y2;
+
+      DrawLabel("row_sym_"+IntegerToString(count),      x,       y, symbolText,                                                 10, symbolColor, true);
+      DrawLabel("row_h4_"+IntegerToString(count),       x + 70,  y, DoubleToString(rsiMain, 1) + " " + stateMainCode,          10, h4Color, true);
+      DrawLabel("row_m15_"+IntegerToString(count),      x + 165, y, DoubleToString(rsiSecondary, 1) + " " + stateSecondaryCode,10, m15Color, true);
+      DrawLabel("row_div_h4_"+IntegerToString(count),   x + 260, y, divMain,                                                     10, divColor, true);
+      DrawLabel("row_div_m15_"+IntegerToString(count),  x + 335, y, divSecondary,                                                10, divColor, true);
+      DrawButton("btn_"+symbol, x + 410, y - 2, "Vai", symbol, 45, 18);
+
+      if(count < 20) y1 += 22; else y2 += 22;
+      count++;
+   }
+
+   ChartRedraw();
+}
+
+//-------------------- Init / Deinit -------------------------------
+int OnInit()
+{
+   DeleteMyObjects();
+
+   SaveChartStyle();
+   ApplyDashboardChartStyle();
+   DrawBackgroundPanel();
+
+   DrawLabel("title", 10, 10, title, 18, COLOR_BRAND_GREEN);
+   DrawLabel("powered_by", 10, 35, poweredByText, 9, clrGray);
+   DrawButton("btn_update", (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) - 110, 35, "Aggiorna", "update", 80, 30);
+
+   UpdateDashboard();
+
+   EventSetTimer(60);
+   if(sendEmailReport)
+   {
+      if(sendEmailImmediately)
+         g_lastEmailSent = 0;
+      else
+         g_lastEmailSent = TimeLocal();
+      TrySendScheduledEmailReport();
+   }
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason)
+{
+   EventKillTimer();
+   DeleteMyObjects();
+   RestoreChartStyle();
+   ChartRedraw();
+}
+
+void OnTick() {}
+
+void OnTimer()
+{
+   TrySendScheduledEmailReport();
+}
+
+//-------------------- Click / chart events -------------------------
+void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
+{
+   if(id == CHARTEVENT_CHART_CHANGE)
+   {
+      // Ridisegna dashboard in caso di resize o cambio grafico
+      UpdateDashboard();
+      return;
+   }
+
+   if(id != CHARTEVENT_OBJECT_CLICK) return;
+
+   // accettiamo solo click su oggetti nostri
+   if(StringFind(sparam, PREFIX, 0) != 0) return;
+
+   if(sparam == PREFIX+"btn_update")
+   {
+      UpdateDashboard();
+      return;
+   }
+
+   if(StringFind(sparam, PREFIX+"btn_", 0) == 0)
+   {
+      string symbol = StringSubstr(sparam, StringLen(PREFIX+"btn_"));
+      long newChart = ChartOpen(symbol, rsiTimeframeMain);
+
+      if(newChart <= 0)
+         Print("Errore apertura grafico per ", symbol, ". Codice: ", GetLastError());
+
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+   }
+}
